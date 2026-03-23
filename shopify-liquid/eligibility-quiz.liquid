@@ -289,73 +289,46 @@
 <script>
 (function() {
 
-/* ═══════════════════════════════════════════════
-   MANUS INTEGRATION CONFIG
-   Replace INTEGRATION_SERVER_URL with your deployed server URL
-   ═══════════════════════════════════════════════ */
-var INTEGRATION_SERVER_URL = '{{ section.settings.integration_server_url | default: "https://your-integration-server.com" }}';
+/* ── Manus Integration Config ── */
+var INTEGRATION_SERVER_URL = 'https://shopify-integration-production-2810.up.railway.app';
 var THANK_YOU_URL = '{{ section.settings.thank_you_url | default: "/pages/thank-you-eligibility" }}';
 var INELIGIBLE_ENGLISH = ['none', 'beginner'];
+var MANUS_TOKEN_KEY = 'edu_session_token';
 
-// Manus session state
-var manusSession = { token: null, email: null, name: null };
+/* ── Read Manus token from localStorage ── */
+function getManusToken() {
+  try { return localStorage.getItem(MANUS_TOKEN_KEY) || null; } catch(e) { return null; }
+}
 
-/* ── Detect Manus session ── */
+/* ── Prefill form from JWT payload if authenticated ── */
 function initManusSession() {
-  // Check for manus_token in URL (passed from Manus redirect)
-  var params = new URLSearchParams(window.location.search);
-  var urlToken = params.get('manus_token');
-
-  // Check localStorage for previously stored token
-  var storedToken = null;
-  try { storedToken = localStorage.getItem('manus_integration_token'); } catch(e) {}
-
-  var token = urlToken || storedToken;
+  var token = getManusToken();
   if (!token) return;
 
-  // Store for future page loads
-  try { localStorage.setItem('manus_integration_token', token); } catch(e) {}
+  // Show connected banner
+  var banner = document.getElementById('efy-manus-banner');
+  var nameEl = document.getElementById('efy-manus-name');
 
-  // Validate the token with the integration server
-  fetch(INTEGRATION_SERVER_URL + '/auth/validate-session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ manusToken: token })
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    if (data.valid) {
-      manusSession.token = data.integrationToken;
-      manusSession.email = data.email;
-      manusSession.name = data.name;
+  // Try to decode JWT payload for prefill (base64url)
+  try {
+    var parts = token.split('.');
+    if (parts.length >= 2) {
+      var payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
+      var email = payload.email || payload.sub || '';
+      var firstName = payload.firstName || payload.given_name || payload.first_name || '';
+      var lastName  = payload.lastName  || payload.family_name || payload.last_name || '';
+      var displayName = (firstName + ' ' + lastName).trim() || email;
 
-      // Show banner
-      var banner = document.getElementById('efy-manus-banner');
-      var nameEl = document.getElementById('efy-manus-name');
-      if (banner && nameEl) {
-        nameEl.textContent = data.name || data.email;
-        banner.style.display = 'flex';
-      }
+      if (banner && nameEl) { nameEl.textContent = displayName; banner.style.display = 'flex'; }
 
-      // Pre-fill email if empty
       var emailField = document.getElementById('ef-email');
-      if (emailField && !emailField.value) {
-        emailField.value = data.email;
-      }
-
-      // Pre-fill name if available
-      if (data.name) {
-        var parts = data.name.split(' ');
-        var fnField = document.getElementById('ef-firstName');
-        var lnField = document.getElementById('ef-lastName');
-        if (fnField && !fnField.value) fnField.value = parts[0] || '';
-        if (lnField && !lnField.value) lnField.value = parts.slice(1).join(' ') || '';
-      }
+      if (emailField && !emailField.value && email) emailField.value = email;
+      var fnField = document.getElementById('ef-firstName');
+      if (fnField && !fnField.value && firstName) fnField.value = firstName;
+      var lnField = document.getElementById('ef-lastName');
+      if (lnField && !lnField.value && lastName) lnField.value = lastName;
     }
-  })
-  .catch(function(err) {
-    console.warn('[Manus Integration] Session validation failed:', err);
-  });
+  } catch(e) {}
 }
 
 function val(id) {
@@ -380,22 +353,16 @@ function clearErrors() {
 /* ── Sync quiz results to Manus ── */
 function syncToManus(data) {
   var headers = { 'Content-Type': 'application/json' };
-  if (manusSession.token) {
-    headers['Authorization'] = 'Bearer ' + manusSession.token;
-  }
+  var token = getManusToken();
+  if (token) headers['X-Manus-Token'] = token;
 
   fetch(INTEGRATION_SERVER_URL + '/quiz/eligibility', {
     method: 'POST',
     headers: headers,
     body: JSON.stringify(data)
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(result) {
-    console.log('[Manus Integration] Eligibility synced:', result);
-  })
-  .catch(function(err) {
-    console.warn('[Manus Integration] Sync failed:', err);
-  });
+  }).catch(function(err) {
+    console.warn('[Manus] Eligibility sync failed:', err);
+  }); // fire-and-forget
 }
 
 window.EF = {
@@ -498,7 +465,7 @@ initManusSession();
 
 {% schema %}
 {
-  "name": "Eligibility Form (Manus)",
+  "name": "Eligibility Form",
   "tag": "section",
   "settings": [
     {
@@ -506,15 +473,8 @@ initManusSession();
       "id": "thank_you_url",
       "label": "Thank you page URL",
       "info": "Pagina unde se redirectioneaza dupa submit"
-    },
-    {
-      "type": "text",
-      "id": "integration_server_url",
-      "label": "Integration Server URL",
-      "default": "https://your-integration-server.com",
-      "info": "URL-ul serverului de integrare Shopify-Manus (ex: https://integration.eduforyou.co.uk)"
     }
   ],
-  "presets": [{ "name": "Eligibility Form (Manus)" }]
+  "presets": [{ "name": "Eligibility Form" }]
 }
 {% endschema %}

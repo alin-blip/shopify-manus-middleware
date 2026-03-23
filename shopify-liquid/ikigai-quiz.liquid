@@ -275,77 +275,53 @@
 <script>
 (function() {
 
-/* ═══════════════════════════════════════════════
-   MANUS INTEGRATION CONFIG
-   ═══════════════════════════════════════════════ */
-var INTEGRATION_SERVER_URL = '{{ section.settings.integration_server_url | default: "https://your-integration-server.com" }}';
+/* ── Manus Integration Config ── */
+var INTEGRATION_SERVER_URL = 'https://shopify-integration-production-2810.up.railway.app';
+var MANUS_TOKEN_KEY = 'edu_session_token';
 
-// Manus session state
-var manusSession = { token: null, email: null, name: null };
+function getManusToken() {
+  try { return localStorage.getItem(MANUS_TOKEN_KEY) || null; } catch(e) { return null; }
+}
 
-/* ── Detect Manus session ── */
+/* ── Detect Manus session and prefill email gate ── */
 function initManusSession() {
-  var params = new URLSearchParams(window.location.search);
-  var urlToken = params.get('manus_token');
-  var storedToken = null;
-  try { storedToken = localStorage.getItem('manus_integration_token'); } catch(e) {}
-
-  var token = urlToken || storedToken;
+  var token = getManusToken();
   if (!token) return;
 
-  try { localStorage.setItem('manus_integration_token', token); } catch(e) {}
+  // Show banner and prefill from JWT payload
+  try {
+    var parts = token.split('.');
+    if (parts.length >= 2) {
+      var payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
+      var email = payload.email || payload.sub || '';
+      var name  = ((payload.firstName || payload.given_name || '') + ' ' + (payload.lastName || payload.family_name || '')).trim() || email;
 
-  fetch(INTEGRATION_SERVER_URL + '/auth/validate-session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ manusToken: token })
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    if (data.valid) {
-      manusSession.token = data.integrationToken;
-      manusSession.email = data.email;
-      manusSession.name = data.name;
-
-      // Show banner
       var banner = document.getElementById('iq-manus-banner');
       var nameEl = document.getElementById('iq-manus-name');
-      if (banner && nameEl) {
-        nameEl.textContent = data.name || data.email;
-        banner.style.display = 'flex';
-      }
+      if (banner && nameEl) { nameEl.textContent = name; banner.style.display = 'flex'; }
 
-      // Pre-fill email gate fields
+      // Pre-fill email gate fields so user can skip typing
       var nameField = document.getElementById('iq-name');
       var emailField = document.getElementById('iq-email');
-      if (nameField && data.name) nameField.value = data.name;
-      if (emailField && data.email) emailField.value = data.email;
+      if (nameField && name) nameField.value = name;
+      if (emailField && email) emailField.value = email;
     }
-  })
-  .catch(function(err) {
-    console.warn('[Manus Integration] Session validation failed:', err);
-  });
+  } catch(e) {}
 }
 
 /* ── Sync quiz results to Manus ── */
 function syncIkigaiToManus(data) {
   var headers = { 'Content-Type': 'application/json' };
-  if (manusSession.token) {
-    headers['Authorization'] = 'Bearer ' + manusSession.token;
-  }
+  var token = getManusToken();
+  if (token) headers['X-Manus-Token'] = token;
 
   fetch(INTEGRATION_SERVER_URL + '/quiz/ikigai', {
     method: 'POST',
     headers: headers,
     body: JSON.stringify(data)
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(result) {
-    console.log('[Manus Integration] Ikigai synced:', result);
-  })
-  .catch(function(err) {
-    console.warn('[Manus Integration] Sync failed:', err);
-  });
+  }).catch(function(err) {
+    console.warn('[Manus] Ikigai sync failed:', err);
+  }); // fire-and-forget
 }
 
 // ── Courses from Metaobjects ──
@@ -584,22 +560,26 @@ window.IQ = {
       state.currentQ++;
       renderQuestion();
     } else {
-      // ═══ MANUS INTEGRATION: If authenticated, skip email gate ═══
-      if (manusSession.email) {
-        // Sync results immediately
+      // ── MANUS: If authenticated, skip email gate and sync immediately ──
+      var _mToken = getManusToken();
+      var _mEmail = null; var _mName = '';
+      if (_mToken) {
+        try {
+          var _p = JSON.parse(atob(_mToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+          _mEmail = _p.email || _p.sub || null;
+          _mName  = ((_p.firstName||_p.given_name||'') + ' ' + (_p.lastName||_p.family_name||'')).trim() || _mEmail || '';
+        } catch(e) {}
+      }
+      if (_mEmail) {
         var counts = calcTagCounts();
         var topDomain = getTopDomain(counts);
         syncIkigaiToManus({
-          name: manusSession.name,
-          email: manusSession.email,
-          answers: state.answers,
-          topDomain: topDomain,
-          tagCounts: counts,
+          name: _mName, email: _mEmail,
+          answers: state.answers, topDomain: topDomain, tagCounts: counts,
           recommendedCourses: getRecommendedCourses(topDomain, getSecondDomain(counts)).map(function(c) { return c.handle; }),
           source: 'shopify'
         });
-
-        renderResults(manusSession.name || '');
+        renderResults(_mName);
         show('iq-stage-results');
       } else {
         // Show email gate for non-authenticated users
@@ -663,7 +643,7 @@ initManusSession();
 
 {% schema %}
 {
-  "name": "Ikigai Quiz (Manus)",
+  "name": "Ikigai Quiz",
   "tag": "section",
   "settings": [
     {
@@ -675,15 +655,8 @@ initManusSession();
       "type": "url",
       "id": "courses_url",
       "label": "Courses archive page URL"
-    },
-    {
-      "type": "text",
-      "id": "integration_server_url",
-      "label": "Integration Server URL",
-      "default": "https://your-integration-server.com",
-      "info": "URL-ul serverului de integrare Shopify-Manus"
     }
   ],
-  "presets": [{ "name": "Ikigai Quiz (Manus)" }]
+  "presets": [{ "name": "Ikigai Quiz" }]
 }
 {% endschema %}

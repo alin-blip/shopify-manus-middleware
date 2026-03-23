@@ -13,6 +13,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const path = require('path');
 const config = require('./config');
 const logger = require('./utils/logger');
 
@@ -77,6 +78,16 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// ── Static Files ──
+// Serves /public directory at /static — used for checkout-redirect.js
+app.use('/static', express.static(path.join(__dirname, '..', 'public'), {
+  maxAge: '1h',
+  setHeaders: (res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+  },
+}));
 
 // ── Routes ──
 app.use('/webhooks', webhookRoutes);

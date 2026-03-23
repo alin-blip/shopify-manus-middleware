@@ -16,8 +16,9 @@ const config = {
   },
 
   manus: {
-    baseUrl: process.env.MANUS_BASE_URL || 'https://www.eduforyou.co.uk',
-    apiUrl: process.env.MANUS_API_URL || 'https://www.eduforyou.co.uk/api/trpc',
+    baseUrl: process.env.MANUS_API_URL || process.env.MANUS_BASE_URL || 'https://www.eduforyou.co.uk',
+    apiUrl: process.env.MANUS_API_URL || 'https://www.eduforyou.co.uk',
+    integrationSecret: process.env.MANUS_INTEGRATION_SECRET || process.env.SHOPIFY_INTEGRATION_SECRET || '',
   },
 
   integration: {

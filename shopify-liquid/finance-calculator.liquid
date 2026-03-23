@@ -218,63 +218,52 @@
 <script>
 (function() {
 
-  /* ═══════════════════════════════════════════════
-     MANUS INTEGRATION CONFIG
-     ═══════════════════════════════════════════════ */
-  var INTEGRATION_SERVER_URL = '{{ section.settings.integration_server_url | default: "https://your-integration-server.com" }}';
+  /* ── Manus Integration Config ── */
+  var INTEGRATION_SERVER_URL = 'https://shopify-integration-production-2810.up.railway.app';
+  var MANUS_TOKEN_KEY = 'edu_session_token';
 
-  // Manus session state
-  var manusSession = { token: null, email: null, name: null };
+  function getManusToken() {
+    try { return localStorage.getItem(MANUS_TOKEN_KEY) || null; } catch(e) { return null; }
+  }
 
-  /* ── Detect Manus session ── */
+  function getManusEmail() {
+    var token = getManusToken();
+    if (!token) return null;
+    try {
+      var p = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+      return p.email || p.sub || null;
+    } catch(e) { return null; }
+  }
+
+  function getManusName() {
+    var token = getManusToken();
+    if (!token) return '';
+    try {
+      var p = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+      return ((p.firstName||p.given_name||'') + ' ' + (p.lastName||p.family_name||'')).trim() || p.email || '';
+    } catch(e) { return ''; }
+  }
+
+  /* ── Detect Manus session and show appropriate save UI ── */
   function initManusSession() {
-    var params = new URLSearchParams(window.location.search);
-    var urlToken = params.get('manus_token');
-    var storedToken = null;
-    try { storedToken = localStorage.getItem('manus_integration_token'); } catch(e) {}
-
-    var token = urlToken || storedToken;
-    if (!token) {
-      // Show email-based save form
-      document.getElementById('fc-save-email').style.display = '';
-      return;
+    var email = getManusEmail();
+    if (email) {
+      var name = getManusName();
+      var banner = document.getElementById('fc-manus-banner');
+      var nameEl = document.getElementById('fc-manus-name');
+      if (banner && nameEl) { nameEl.textContent = name || email; banner.style.display = 'flex'; }
+      var authSave  = document.getElementById('fc-save-auth');
+      var emailSave = document.getElementById('fc-save-email');
+      if (authSave)  authSave.style.display  = '';
+      if (emailSave) emailSave.style.display = 'none';
+    } else {
+      var emailSave = document.getElementById('fc-save-email');
+      if (emailSave) emailSave.style.display = '';
     }
-
-    try { localStorage.setItem('manus_integration_token', token); } catch(e) {}
-
-    fetch(INTEGRATION_SERVER_URL + '/auth/validate-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ manusToken: token })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.valid) {
-        manusSession.token = data.integrationToken;
-        manusSession.email = data.email;
-        manusSession.name = data.name;
-
-        // Show banner
-        var banner = document.getElementById('fc-manus-banner');
-        var nameEl = document.getElementById('fc-manus-name');
-        if (banner && nameEl) {
-          nameEl.textContent = data.name || data.email;
-          banner.style.display = 'flex';
-        }
-
-        // Show authenticated save button
-        document.getElementById('fc-save-auth').style.display = '';
-      } else {
-        document.getElementById('fc-save-email').style.display = '';
-      }
-    })
-    .catch(function(err) {
-      console.warn('[Manus Integration] Session validation failed:', err);
-      document.getElementById('fc-save-email').style.display = '';
-    });
   }
 
   // ── Data (din FINANCE_INFO) ──
+  
   var TUITION = 9535;
   var MAINTENANCE = {
     london:        13022,
@@ -330,12 +319,12 @@
   function syncFinanceToManus(email) {
     var data = getCalcData();
     data.email = email;
-    data.source = 'shopify';
+    data.source = 'shopify_finance_calculator';
+    data.submittedAt = new Date().toISOString();
 
     var headers = { 'Content-Type': 'application/json' };
-    if (manusSession.token) {
-      headers['Authorization'] = 'Bearer ' + manusSession.token;
-    }
+    var token = getManusToken();
+    if (token) headers['X-Manus-Token'] = token;
 
     return fetch(INTEGRATION_SERVER_URL + '/quiz/finance', {
       method: 'POST',
@@ -348,13 +337,14 @@
   // ── Public API ──
   window.FC = {
     saveCalculation: function() {
-      if (!manusSession.email) return;
+      var email = getManusEmail();
+      if (!email) return;
 
       var statusEl = document.getElementById('fc-save-status');
       statusEl.textContent = 'Saving...';
       statusEl.style.color = '#666';
 
-      syncFinanceToManus(manusSession.email)
+      syncFinanceToManus(email)
         .then(function(result) {
           statusEl.textContent = '✓ Saved to your dashboard';
           statusEl.style.color = '#10b981';
@@ -400,7 +390,7 @@
 
 {% schema %}
 {
-  "name": "Finance Calculator (Manus)",
+  "name": "Finance Calculator",
   "tag": "section",
   "settings": [
     {
@@ -414,15 +404,8 @@
       "id": "eligibility_url",
       "label": "Eligibility page URL",
       "info": "Link-ul butonului Check Your Eligibility"
-    },
-    {
-      "type": "text",
-      "id": "integration_server_url",
-      "label": "Integration Server URL",
-      "default": "https://your-integration-server.com",
-      "info": "URL-ul serverului de integrare Shopify-Manus"
     }
   ],
-  "presets": [{ "name": "Finance Calculator (Manus)" }]
+  "presets": [{ "name": "Finance Calculator" }]
 }
 {% endschema %}

@@ -1,0 +1,7 @@
+node_modules
+logs
+.env
+.git
+shopify-liquid
+docs
+README.md
