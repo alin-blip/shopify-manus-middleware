@@ -1,0 +1,520 @@
+{% comment %}
+  Section: eligibility-form.liquid
+  Formular eligibilitate single-page
+  Cursuri + Locații din Metaobjects Shopify
+  
+  ═══════════════════════════════════════════════
+  MODIFIED: Manus EduForYou Integration
+  - Sends quiz results to integration server
+  - Detects Manus session via manus_token
+  - Links results to student profile by email
+  ═══════════════════════════════════════════════
+{% endcomment %}
+
+{% assign all_courses   = shop.metaobjects['course'].values %}
+{% assign all_locations = shop.metaobjects['location'].values %}
+
+<div class="efy-ef-wrap">
+  <div class="efy-ef-card" id="efy-ef-card">
+
+    <!-- Manus Session Banner (shown when authenticated) -->
+    <div id="efy-manus-banner" style="display:none;" class="efy-ef-manus-banner">
+      <span>✓</span>
+      <span>Connected as <strong id="efy-manus-name"></strong> — results will sync to your dashboard</span>
+    </div>
+
+    <!-- Ineligibil -->
+    <div id="efy-ef-ineligible" style="display:none;">
+      <div class="efy-ef-result">
+        <div class="efy-ef-result__icon efy-ef-result__icon--red">✗</div>
+        <h3>We're sorry, you are not eligible for our programmes.</h3>
+        <p>Thank you for your interest. Our study programmes require at least an intermediate level of English. We encourage you to improve your language skills and apply again.</p>
+        <button class="efy-ef-btn-outline" onclick="EF.showForm()">← Back to form</button>
+      </div>
+    </div>
+
+    <!-- Formular -->
+    <div id="efy-ef-form-wrap">
+      <div id="efy-ef-error" class="efy-ef-error" style="display:none;"></div>
+
+      <!-- First Name + Last Name -->
+      <div class="efy-ef-grid-2">
+        <div class="efy-ef-field">
+          <label for="ef-firstName"><span class="efy-ef-icon">👤</span> First Name *</label>
+          <input type="text" id="ef-firstName" placeholder="e.g. John" autocomplete="given-name">
+          <span class="efy-ef-msg" id="ef-firstName-msg"></span>
+        </div>
+        <div class="efy-ef-field">
+          <label for="ef-lastName"><span class="efy-ef-icon">👤</span> Last Name *</label>
+          <input type="text" id="ef-lastName" placeholder="e.g. Smith" autocomplete="family-name">
+          <span class="efy-ef-msg" id="ef-lastName-msg"></span>
+        </div>
+      </div>
+
+      <!-- Email -->
+      <div class="efy-ef-field">
+        <label for="ef-email"><span class="efy-ef-icon">✉</span> Email Address *</label>
+        <input type="email" id="ef-email" placeholder="e.g. john.smith@gmail.com" autocomplete="email">
+        <span class="efy-ef-msg" id="ef-email-msg"></span>
+      </div>
+
+      <!-- Age + Phone -->
+      <div class="efy-ef-grid-2">
+        <div class="efy-ef-field">
+          <label for="ef-age"><span class="efy-ef-icon">📅</span> Age *</label>
+          <select id="ef-age">
+            <option value="">Select your age</option>
+            <option>17</option><option>18</option><option>19</option><option>20</option>
+            <option>21</option><option>22</option><option>23</option><option>24</option>
+            <option>25</option><option>26-30</option><option>31-35</option><option>36-40</option>
+            <option>41-45</option><option>46-50</option><option>50+</option>
+          </select>
+          <span class="efy-ef-msg" id="ef-age-msg"></span>
+        </div>
+        <div class="efy-ef-field">
+          <label for="ef-phone"><span class="efy-ef-icon">📞</span> Phone (UK) *</label>
+          <input type="tel" id="ef-phone" placeholder="+44 7..." value="+44" autocomplete="tel">
+          <span class="efy-ef-msg" id="ef-phone-msg"></span>
+        </div>
+      </div>
+
+      <!-- Status imigrare -->
+      <div class="efy-ef-field">
+        <label for="ef-status"><span class="efy-ef-icon">✅</span> UK Immigration Status *</label>
+        <select id="ef-status">
+          <option value="">Select your status</option>
+          <option value="citizen">UK / Irish Citizen</option>
+          <option value="settled">Settled Status (EU Exit)</option>
+          <option value="presettled">Pre-settled Status (EU Exit)</option>
+          <option value="ilr">Indefinite Leave to Remain</option>
+          <option value="refugee">Refugee Status</option>
+          <option value="other">Other / Visa</option>
+        </select>
+        <span class="efy-ef-msg" id="ef-status-msg"></span>
+      </div>
+
+      <!-- Finanțare -->
+      <div class="efy-ef-field">
+        <label for="ef-financing"><span class="efy-ef-icon">💳</span> Have you previously received UK funding? *</label>
+        <select id="ef-financing">
+          <option value="">Select an option</option>
+          <option value="nu">Nu</option>
+          <option value="da">Da</option>
+        </select>
+        <span class="efy-ef-msg" id="ef-financing-msg"></span>
+      </div>
+
+      <!-- Nivel engleză -->
+      <div class="efy-ef-field">
+        <label for="ef-english"><span class="efy-ef-icon">🌐</span> English Level *</label>
+        <select id="ef-english">
+          <option value="">Select your English level</option>
+          <option value="none">No English</option>
+          <option value="beginner">Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+          <option value="native">Native</option>
+        </select>
+        <span class="efy-ef-msg" id="ef-english-msg"></span>
+      </div>
+
+      <!-- Curs + Campus din Metaobjects -->
+      <div class="efy-ef-grid-2">
+        <div class="efy-ef-field">
+          <label for="ef-course"><span class="efy-ef-icon">🎓</span> Chosen Course *</label>
+          <select id="ef-course">
+            <option value="">Select a course</option>
+            {%- for course in all_courses -%}
+              <option value="{{ course.system.handle }}">{{ course['title'] | strip }}</option>
+            {%- endfor -%}
+          </select>
+          <span class="efy-ef-msg" id="ef-course-msg"></span>
+        </div>
+        <div class="efy-ef-field">
+          <label for="ef-campus"><span class="efy-ef-icon">📍</span> Chosen Campus *</label>
+          <select id="ef-campus">
+            <option value="">Select a campus</option>
+            {%- for loc in all_locations -%}
+              <option value="{{ loc.system.handle }}">{{ loc['name'] | strip }}</option>
+            {%- endfor -%}
+          </select>
+          <span class="efy-ef-msg" id="ef-campus-msg"></span>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button class="efy-ef-btn-primary" id="efy-ef-submit" onclick="EF.submit()">
+        <span id="efy-ef-btn-text">Check Eligibility →</span>
+      </button>
+
+      <!-- Disclaimer -->
+      <div class="efy-ef-disclaimer">
+        <span>ℹ</span>
+        <p>By completing this form, you agree to be contacted by the EduForYou team to finalise your enrolment process.</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+.efy-ef-wrap { font-family: inherit; padding: 3rem 1rem 5rem; }
+.efy-ef-card {
+  background: rgba(255,255,255,.85);
+  backdrop-filter: blur(8px);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+  padding: 2rem;
+  max-width: 760px;
+  margin: 0 auto;
+}
+@media (max-width: 600px) { .efy-ef-card { padding: 1.25rem; } }
+
+.efy-ef-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+@media (max-width: 600px) { .efy-ef-grid-2 { grid-template-columns: 1fr; } }
+
+.efy-ef-field { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1.25rem; }
+.efy-ef-field label { font-weight: 600; color: #1a252f; display: flex; align-items: center; gap: .4rem; }
+.efy-ef-icon { color: #E67E22; }
+
+.efy-ef-field input,
+.efy-ef-field select {
+  padding: .65rem .875rem;
+  border: 1.5px solid rgba(0,0,0,.12);
+  border-radius: 8px;
+  font-family: inherit;
+  background: #fff;
+  color: #1a252f;
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.efy-ef-field input:focus,
+.efy-ef-field select:focus { border-color: #E67E22; box-shadow: 0 0 0 3px rgba(230,126,34,.1); }
+.efy-ef-field input.error,
+.efy-ef-field select.error { border-color: #e74c3c; }
+
+.efy-ef-msg { color: #e74c3c; display: none; }
+.efy-ef-msg.visible { display: block; }
+
+.efy-ef-btn-primary {
+  width: 100%;
+  background: #E67E22;
+  color: #fff;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .18s, box-shadow .18s;
+  box-shadow: 0 4px 14px rgba(230,126,34,.35);
+  margin-top: .5rem;
+}
+.efy-ef-btn-primary:hover { background: #d35400; box-shadow: 0 6px 20px rgba(230,126,34,.45); }
+.efy-ef-btn-primary:disabled { opacity: .65; cursor: not-allowed; }
+
+.efy-ef-btn-outline {
+  background: transparent;
+  border: 1.5px solid #E67E22;
+  color: #E67E22;
+  border-radius: 10px;
+  padding: .75rem 1.5rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  transition: background .15s, color .15s;
+  margin-top: 1rem;
+}
+.efy-ef-btn-outline:hover { background: #E67E22; color: #fff; }
+
+.efy-ef-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.efy-ef-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: .5rem;
+  background: #eff6ff;
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  color: #1d4ed8;
+  margin-top: 1rem;
+}
+.efy-ef-disclaimer span { flex-shrink: 0; }
+.efy-ef-disclaimer p { margin: 0; }
+
+.efy-ef-result { text-align: center; padding: 1rem 0; }
+.efy-ef-result__icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1.25rem;
+  font-weight: 900;
+}
+.efy-ef-result__icon--red { background: #fee2e2; color: #ef4444; font-size: 1.75rem; }
+.efy-ef-result h3 { font-weight: 800; color: #1a252f; margin: 0 0 .75rem; }
+.efy-ef-result p { color: #64748b; line-height: 1.6; margin: 0 0 1.25rem; }
+
+/* Manus session banner */
+.efy-ef-manus-banner {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: .9rem;
+}
+.efy-ef-manus-banner span:first-child {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  background: #10b981;
+  color: #fff;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .75rem; font-weight: 700;
+}
+</style>
+
+<script>
+(function() {
+
+/* ═══════════════════════════════════════════════
+   MANUS INTEGRATION CONFIG
+   Replace INTEGRATION_SERVER_URL with your deployed server URL
+   ═══════════════════════════════════════════════ */
+var INTEGRATION_SERVER_URL = '{{ section.settings.integration_server_url | default: "https://your-integration-server.com" }}';
+var THANK_YOU_URL = '{{ section.settings.thank_you_url | default: "/pages/thank-you-eligibility" }}';
+var INELIGIBLE_ENGLISH = ['none', 'beginner'];
+
+// Manus session state
+var manusSession = { token: null, email: null, name: null };
+
+/* ── Detect Manus session ── */
+function initManusSession() {
+  // Check for manus_token in URL (passed from Manus redirect)
+  var params = new URLSearchParams(window.location.search);
+  var urlToken = params.get('manus_token');
+
+  // Check localStorage for previously stored token
+  var storedToken = null;
+  try { storedToken = localStorage.getItem('manus_integration_token'); } catch(e) {}
+
+  var token = urlToken || storedToken;
+  if (!token) return;
+
+  // Store for future page loads
+  try { localStorage.setItem('manus_integration_token', token); } catch(e) {}
+
+  // Validate the token with the integration server
+  fetch(INTEGRATION_SERVER_URL + '/auth/validate-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ manusToken: token })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.valid) {
+      manusSession.token = data.integrationToken;
+      manusSession.email = data.email;
+      manusSession.name = data.name;
+
+      // Show banner
+      var banner = document.getElementById('efy-manus-banner');
+      var nameEl = document.getElementById('efy-manus-name');
+      if (banner && nameEl) {
+        nameEl.textContent = data.name || data.email;
+        banner.style.display = 'flex';
+      }
+
+      // Pre-fill email if empty
+      var emailField = document.getElementById('ef-email');
+      if (emailField && !emailField.value) {
+        emailField.value = data.email;
+      }
+
+      // Pre-fill name if available
+      if (data.name) {
+        var parts = data.name.split(' ');
+        var fnField = document.getElementById('ef-firstName');
+        var lnField = document.getElementById('ef-lastName');
+        if (fnField && !fnField.value) fnField.value = parts[0] || '';
+        if (lnField && !lnField.value) lnField.value = parts.slice(1).join(' ') || '';
+      }
+    }
+  })
+  .catch(function(err) {
+    console.warn('[Manus Integration] Session validation failed:', err);
+  });
+}
+
+function val(id) {
+  var el = document.getElementById(id);
+  return el ? el.value.trim() : '';
+}
+
+function setErr(id, msg) {
+  var field = document.getElementById(id);
+  var msgEl = document.getElementById(id + '-msg');
+  if (field) field.classList.toggle('error', !!msg);
+  if (msgEl) { msgEl.textContent = msg || ''; msgEl.classList.toggle('visible', !!msg); }
+}
+
+function clearErrors() {
+  ['firstName','lastName','email','age','phone','status','financing','english','course','campus'].forEach(function(f) {
+    setErr('ef-' + f, '');
+  });
+  document.getElementById('efy-ef-error').style.display = 'none';
+}
+
+/* ── Sync quiz results to Manus ── */
+function syncToManus(data) {
+  var headers = { 'Content-Type': 'application/json' };
+  if (manusSession.token) {
+    headers['Authorization'] = 'Bearer ' + manusSession.token;
+  }
+
+  fetch(INTEGRATION_SERVER_URL + '/quiz/eligibility', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(data)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(result) {
+    console.log('[Manus Integration] Eligibility synced:', result);
+  })
+  .catch(function(err) {
+    console.warn('[Manus Integration] Sync failed:', err);
+  });
+}
+
+window.EF = {
+  showForm: function() {
+    document.getElementById('efy-ef-ineligible').style.display = 'none';
+    document.getElementById('efy-ef-form-wrap').style.display = '';
+  },
+
+  submit: function() {
+    clearErrors();
+
+    var firstName = val('ef-firstName');
+    var lastName  = val('ef-lastName');
+    var email     = val('ef-email');
+    var age       = val('ef-age');
+    var phone     = val('ef-phone');
+    var status    = val('ef-status');
+    var financing = val('ef-financing');
+    var english   = val('ef-english');
+    var course    = val('ef-course');
+    var campus    = val('ef-campus');
+
+    var ok = true;
+    if (firstName.length < 2)  { setErr('ef-firstName', 'First name is required (min. 2 characters)'); ok = false; }
+    if (lastName.length < 2)   { setErr('ef-lastName',  'Last name is required (min. 2 characters)'); ok = false; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErr('ef-email', 'Please enter a valid email address'); ok = false; }
+    if (!age)      { setErr('ef-age',       'Age is required'); ok = false; }
+    if (!/^\+44\s?\d{10}$/.test(phone)) { setErr('ef-phone', 'Invalid format. Use +44 followed by 10 digits'); ok = false; }
+    if (!status)   { setErr('ef-status',    'Immigration status is required'); ok = false; }
+    if (!financing){ setErr('ef-financing', 'Please select an option'); ok = false; }
+    if (!english)  { setErr('ef-english',   'English level is required'); ok = false; }
+    if (!course)   { setErr('ef-course',    'Please select a course'); ok = false; }
+    if (!campus)   { setErr('ef-campus',    'Please select a campus'); ok = false; }
+    if (!ok) return;
+
+    // English gate
+    var eligible = INELIGIBLE_ENGLISH.indexOf(english) === -1;
+    if (!eligible) {
+      document.getElementById('efy-ef-form-wrap').style.display = 'none';
+      document.getElementById('efy-ef-ineligible').style.display = '';
+
+      // Still sync the ineligible result to Manus
+      syncToManus({
+        firstName: firstName, lastName: lastName, email: email,
+        phone: phone, age: age, immigrationStatus: status,
+        previousFunding: financing, englishLevel: english,
+        course: course, campus: campus, eligible: false,
+        source: 'shopify'
+      });
+      return;
+    }
+
+    // GTM
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'formular_finalizat',
+        user_data: { email: email, phone: phone, first_name: firstName, last_name: lastName },
+        course: course, campus: campus,
+      });
+    } catch(e) {}
+
+    // ═══ MANUS INTEGRATION: Sync results ═══
+    syncToManus({
+      firstName: firstName, lastName: lastName, email: email,
+      phone: phone, age: age, immigrationStatus: status,
+      previousFunding: financing, englishLevel: english,
+      course: course, campus: campus, eligible: true,
+      source: 'shopify'
+    });
+
+    // Disable button
+    var btn = document.getElementById('efy-ef-submit');
+    btn.disabled = true;
+    document.getElementById('efy-ef-btn-text').textContent = 'Processing...';
+
+    // Redirect to thank-you with params
+    var params = new URLSearchParams({
+      firstName: firstName,
+      lastName:  lastName,
+      email:     email,
+      phone:     phone,
+      age:       age,
+      course:    course,
+      campus:    campus,
+      source:    'eligibility',
+    });
+
+    setTimeout(function() {
+      window.location.href = THANK_YOU_URL + '?' + params.toString();
+    }, 300);
+  }
+};
+
+// Initialize Manus session detection on page load
+initManusSession();
+
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Eligibility Form (Manus)",
+  "tag": "section",
+  "settings": [
+    {
+      "type": "url",
+      "id": "thank_you_url",
+      "label": "Thank you page URL",
+      "info": "Pagina unde se redirectioneaza dupa submit"
+    },
+    {
+      "type": "text",
+      "id": "integration_server_url",
+      "label": "Integration Server URL",
+      "default": "https://your-integration-server.com",
+      "info": "URL-ul serverului de integrare Shopify-Manus (ex: https://integration.eduforyou.co.uk)"
+    }
+  ],
+  "presets": [{ "name": "Eligibility Form (Manus)" }]
+}
+{% endschema %}

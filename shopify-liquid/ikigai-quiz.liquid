@@ -1,0 +1,689 @@
+{% comment %}
+  Section: ikigai-quiz.liquid
+  Quiz Ikigai complet pentru EduForYou — adaptat din React/TSX
+  
+  ═══════════════════════════════════════════════
+  MODIFIED: Manus EduForYou Integration
+  - Sends quiz results to integration server on completion
+  - Detects Manus session via manus_token
+  - Links results to student profile by email
+  - Skips email gate if already authenticated via Manus
+  ═══════════════════════════════════════════════
+{% endcomment %}
+
+{%- comment -%} Cursurile sunt randate direct in JS via output tags {%- endcomment -%}
+
+<div id="efy-ikigai" class="efy-iq">
+
+  {%- comment -%} ── INTRO ── {%- endcomment -%}
+  <div id="iq-stage-intro" class="iq-stage">
+    <div class="iq-hero">
+      <div class="page-width iq-hero__inner">
+        <!-- Manus Session Banner -->
+        <div id="iq-manus-banner" style="display:none;" class="iq-manus-banner">
+          <span class="iq-manus-check">✓</span>
+          <span>Logged in as <strong id="iq-manus-name"></strong> — results will sync to your dashboard</span>
+        </div>
+        <span class="iq-badge">✦ Ikigai Career Quiz</span>
+        <h1 class="iq-hero__title">Discover Your <span>Ideal Course</span><br>with Ikigai</h1>
+        <p class="iq-hero__sub">Answer 11 quick questions across the 4 Ikigai pillars and we'll match you to your perfect university course — funded by Student Finance England.</p>
+        <button class="iq-btn-primary" onclick="IQ.start()">
+          Start Quiz <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <p class="iq-hero__note">Takes about 3 minutes · Free · No commitment</p>
+      </div>
+    </div>
+
+    <div class="page-width iq-pillars">
+      <div class="iq-pillars__grid">
+        <div class="iq-pillar iq-pillar--love">
+          <div class="iq-pillar__icon">❤️</div>
+          <h3>What You Love</h3>
+          <p>Discover your passions and interests</p>
+        </div>
+        <div class="iq-pillar iq-pillar--good">
+          <div class="iq-pillar__icon">💡</div>
+          <h3>What You're Good At</h3>
+          <p>Identify your natural strengths</p>
+        </div>
+        <div class="iq-pillar iq-pillar--world">
+          <div class="iq-pillar__icon">🌍</div>
+          <h3>What the World Needs</h3>
+          <p>Find your purpose and mission</p>
+        </div>
+        <div class="iq-pillar iq-pillar--paid">
+          <div class="iq-pillar__icon">💷</div>
+          <h3>What You Can Be Paid For</h3>
+          <p>Align with lucrative career paths</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {%- comment -%} ── QUIZ ── {%- endcomment -%}
+  <div id="iq-stage-quiz" class="iq-stage" style="display:none;">
+    <div class="page-width iq-quiz-wrap">
+      <div class="iq-progress-wrap">
+        <div class="iq-progress-meta">
+          <span id="iq-q-count">Question 1 of 11</span>
+          <span id="iq-pillar-badge" class="iq-pillar-badge">❤️ What You Love</span>
+        </div>
+        <div class="iq-progress-bar"><div id="iq-progress-fill" class="iq-progress-fill" style="width:0%"></div></div>
+      </div>
+
+      <div id="iq-question-wrap" class="iq-question-wrap">
+        <h2 id="iq-question-text" class="iq-question-text"></h2>
+        <div id="iq-options" class="iq-options"></div>
+        <button id="iq-back-btn" class="iq-back-btn" onclick="IQ.back()" style="display:none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Previous question
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {%- comment -%} ── EMAIL GATE (skipped if Manus session active) ── {%- endcomment -%}
+  <div id="iq-stage-email" class="iq-stage" style="display:none;">
+    <div class="page-width iq-email-wrap">
+      <div class="iq-email-card">
+        <div class="iq-email-card__header">
+          <div class="iq-lock-icon">🔓</div>
+          <h2>Your Results Are Ready!</h2>
+          <p>Enter your details to unlock your personalised Ikigai course match.</p>
+        </div>
+        <div class="iq-email-card__teaser">
+          <span class="iq-teaser-icon">✨</span>
+          <div>
+            <strong>We found your top course matches</strong>
+            <span>Based on your answers across all 4 Ikigai pillars</span>
+          </div>
+        </div>
+        <form id="iq-email-form" class="iq-email-form" onsubmit="IQ.submitEmail(event)">
+          <div class="iq-form-field">
+            <label>Full Name *</label>
+            <input type="text" id="iq-name" placeholder="Your full name" required>
+          </div>
+          <div class="iq-form-field">
+            <label>Email Address *</label>
+            <input type="email" id="iq-email" placeholder="your@email.com" required>
+          </div>
+          <div class="iq-form-field">
+            <label>WhatsApp / Phone</label>
+            <input type="tel" id="iq-phone" placeholder="+44 7xxx xxx xxx">
+          </div>
+          <button type="submit" class="iq-btn-primary iq-btn-full">
+            Unlock My Results <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+          <p class="iq-privacy">🔒 Your data is safe. No spam, ever.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {%- comment -%} ── RESULTS ── {%- endcomment -%}
+  <div id="iq-stage-results" class="iq-stage" style="display:none;">
+    <div class="iq-results-hero">
+      <div class="page-width">
+        <span class="iq-badge">✦ Your Ikigai Profile</span>
+        <h1 class="iq-results-title">
+          <span id="iq-res-name"></span>Your Ideal Path is in <span id="iq-res-domain" class="iq-orange"></span>
+        </h1>
+        <p class="iq-results-sub">Based on your answers across all four Ikigai pillars, here are the courses that align perfectly with your passions, skills, purpose, and career goals.</p>
+      </div>
+    </div>
+
+    <div class="page-width iq-results-body">
+      <div class="iq-breakdown-card">
+        <h3 class="iq-section-title">Your Ikigai Breakdown</h3>
+        <div id="iq-breakdown-grid" class="iq-breakdown-grid"></div>
+      </div>
+
+      <div class="iq-recommended">
+        <h3 class="iq-section-title">
+          Recommended Courses for You
+          <span class="iq-sf-badge">Student Finance Funded</span>
+        </h3>
+        <div id="iq-courses-grid" class="iq-courses-grid"></div>
+        <div id="iq-no-courses" class="iq-no-courses" style="display:none;">
+          <p>No courses found for your profile. Our team will be in touch with personalised recommendations.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+/* ── Reset & Base ── */
+.efy-iq *, .efy-iq *::before, .efy-iq *::after { box-sizing: border-box; }
+.efy-iq { font-family: inherit; color: #1a252f; }
+.iq-stage { animation: iqFadeIn .4s ease; }
+@keyframes iqFadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Badge ── */
+.iq-badge { display: inline-block; padding: .3rem 1rem; border-radius: 999px; background: rgba(230,126,34,.15); color: #c96b15; border: 1px solid rgba(230,126,34,.3); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 1rem; }
+
+/* ── HERO ── */
+.iq-hero { background: #1a252f; padding: 4rem 0 3rem; }
+.iq-hero__title { font-weight: 800; color: #fff; margin: .5rem 0 1rem; line-height: 1.1; }
+.iq-hero__title span { color: #E67E22; }
+.iq-hero__sub { color: rgba(255,255,255,.65); max-width: 540px; line-height: 1.65; margin-bottom: 2rem; }
+.iq-hero__note { color: rgba(255,255,255,.35); margin-top: .75rem; }
+
+/* ── Manus Banner ── */
+.iq-manus-banner {
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(16,185,129,.15); border: 1px solid rgba(16,185,129,.3);
+  color: #a7f3d0; border-radius: 8px; padding: .6rem 1rem;
+  margin-bottom: 1.5rem; font-size: .9rem;
+}
+.iq-manus-check {
+  flex-shrink: 0; width: 22px; height: 22px;
+  background: #10b981; color: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .7rem; font-weight: 700;
+}
+
+/* ── Pillars ── */
+.iq-pillars { padding: 3rem 0 2.5rem; }
+.iq-pillars__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin-bottom: 1.5rem; }
+@media (max-width: 860px) { .iq-pillars__grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .iq-pillars__grid { grid-template-columns: 1fr; } }
+.iq-pillar { background: #fff; border-radius: 14px; padding: 1.5rem; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,.07); border-top: 3px solid transparent; transition: transform .2s, box-shadow .2s; }
+.iq-pillar:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.iq-pillar--love { border-top-color: #d94f4f; }
+.iq-pillar--good { border-top-color: #3da34f; }
+.iq-pillar--world { border-top-color: #3d566e; }
+.iq-pillar--paid { border-top-color: #E67E22; }
+.iq-pillar__icon { margin-bottom: .75rem; }
+.iq-pillar h3 { font-size: 2rem; font-weight: 700; margin: 0 0 .4rem; }
+.iq-pillar p { color: #777; margin: 0; line-height: 1.5; }
+
+/* ── Buttons ── */
+.iq-btn-primary { display: inline-flex; align-items: center; gap: .5rem; background: #E67E22; color: #1a252f; font-weight: 700; padding: .85rem 2rem; border-radius: 10px; border: none; cursor: pointer; text-decoration: none; transition: background .2s, transform .15s; }
+.iq-btn-primary:hover { background: #c96b15; transform: translateY(-1px); }
+.iq-btn-full { width: 100%; justify-content: center; padding: 1rem; }
+
+/* ── Quiz ── */
+.iq-quiz-wrap { max-width: 680px; margin: 0 auto; padding: 3rem 0 4rem; }
+.iq-progress-wrap { margin-bottom: 2rem; }
+.iq-progress-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+.iq-pillar-badge { background: rgba(230,126,34,.15); color: #c96b15; padding: .2rem .75rem; border-radius: 999px; font-weight: 600; font-size: .85rem; }
+.iq-progress-bar { height: 6px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+.iq-progress-fill { height: 100%; background: #E67E22; border-radius: 999px; transition: width .4s ease; }
+.iq-question-wrap { animation: iqFadeIn .35s ease; }
+.iq-question-text { font-weight: 700; margin: 0 0 1.5rem; line-height: 1.3; }
+.iq-options { display: flex; flex-direction: column; gap: .75rem; }
+.iq-option { display: flex; align-items: center; gap: .75rem; background: #fff; border: 1.5px solid #e5e7eb; border-radius: 12px; padding: 1rem 1.25rem; cursor: pointer; text-align: left; font-family: inherit; font-weight: 500; transition: border-color .15s, background .15s, transform .1s; }
+.iq-option:hover { border-color: #E67E22; background: rgba(230,126,34,.04); transform: translateX(4px); }
+.iq-option__emoji { font-size: 1.5rem; flex-shrink: 0; }
+.iq-back-btn { display: inline-flex; align-items: center; gap: .4rem; background: none; border: none; color: #888; cursor: pointer; font-family: inherit; margin-top: 1.5rem; padding: .5rem 0; }
+.iq-back-btn:hover { color: #E67E22; }
+
+/* ── Email gate ── */
+.iq-email-wrap { max-width: 480px; margin: 0 auto; padding: 3rem 0 4rem; }
+.iq-email-card { background: #fff; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,.12); overflow: hidden; }
+.iq-email-card__header { text-align: center; padding: 2rem 2rem 1rem; }
+.iq-lock-icon { font-size: 2.5rem; margin-bottom: .75rem; }
+.iq-email-card__teaser { display: flex; align-items: center; gap: .75rem; background: #fef3c7; padding: 1rem 1.5rem; margin: 0 1.5rem; border-radius: 10px; }
+.iq-teaser-icon { font-size: 1.5rem; }
+.iq-email-card__teaser strong { display: block; }
+.iq-email-card__teaser span { color: #92400e; font-size: .85rem; }
+.iq-email-form { padding: 1.5rem 2rem 2rem; }
+.iq-form-field { margin-bottom: 1rem; }
+.iq-form-field label { display: block; font-weight: 600; margin-bottom: .3rem; }
+.iq-form-field input { width: 100%; padding: .65rem .875rem; border: 1.5px solid #e5e7eb; border-radius: 8px; font-family: inherit; outline: none; }
+.iq-form-field input:focus { border-color: #E67E22; }
+.iq-privacy { text-align: center; color: #999; font-size: .8rem; margin-top: .75rem; }
+
+/* ── Results ── */
+.iq-results-hero { background: #1a252f; padding: 3rem 0; }
+.iq-results-title { font-weight: 800; color: #fff; margin: .5rem 0 1rem; line-height: 1.15; }
+.iq-orange { color: #E67E22; }
+.iq-results-sub { color: rgba(255,255,255,.6); max-width: 560px; line-height: 1.6; }
+.iq-results-body { padding: 2.5rem 0 4rem; }
+.iq-section-title { font-weight: 700; margin: 0 0 1.25rem; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.iq-sf-badge { background: #ecfdf5; color: #065f46; padding: .2rem .75rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+
+/* Breakdown */
+.iq-breakdown-card { background: #fff; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,.07); padding: 2rem; margin-bottom: 2rem; }
+.iq-breakdown-grid { display: flex; flex-direction: column; gap: 1rem; }
+.iq-breakdown-item { display: grid; grid-template-columns: 48px 1fr 2fr; gap: .75rem; align-items: center; }
+.iq-breakdown-pct { font-weight: 700; color: #E67E22; text-align: right; }
+.iq-breakdown-label { font-weight: 600; }
+.iq-breakdown-bar { height: 8px; background: #f3f4f6; border-radius: 999px; overflow: hidden; }
+.iq-breakdown-fill { height: 100%; background: linear-gradient(90deg, #E67E22, #f59e0b); border-radius: 999px; transition: width .8s ease; }
+
+/* Courses grid */
+.iq-courses-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; }
+.iq-course-card { background: #fff; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,.07); overflow: hidden; text-decoration: none; color: inherit; transition: transform .2s, box-shadow .2s; display: flex; flex-direction: column; }
+.iq-course-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.iq-course-card--best { border: 2px solid #E67E22; }
+.iq-course-card__img { position: relative; height: 160px; overflow: hidden; }
+.iq-course-card__img img { width: 100%; height: 100%; object-fit: cover; }
+.iq-course-card__img-overlay { position: absolute; inset: 0; background: linear-gradient(transparent 40%, rgba(0,0,0,.6)); }
+.iq-course-card__name { position: absolute; bottom: .75rem; left: .75rem; right: .75rem; color: #fff; font-weight: 700; font-size: .95rem; }
+.iq-best-badge { position: absolute; top: .75rem; right: .75rem; background: #E67E22; color: #1a252f; padding: .2rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+.iq-course-card__body { padding: 1rem; flex: 1; display: flex; flex-direction: column; }
+.iq-course-card__meta { display: flex; justify-content: space-between; font-size: .85rem; color: #666; margin-bottom: .5rem; }
+.iq-course-card__fees { color: #E67E22; font-weight: 600; }
+.iq-course-card__desc { color: #777; font-size: .85rem; line-height: 1.5; flex: 1; }
+.iq-course-card__cta { color: #E67E22; font-weight: 600; font-size: .85rem; margin-top: .5rem; }
+.iq-no-courses { text-align: center; padding: 2rem; color: #888; }
+</style>
+
+<script>
+(function() {
+
+/* ═══════════════════════════════════════════════
+   MANUS INTEGRATION CONFIG
+   ═══════════════════════════════════════════════ */
+var INTEGRATION_SERVER_URL = '{{ section.settings.integration_server_url | default: "https://your-integration-server.com" }}';
+
+// Manus session state
+var manusSession = { token: null, email: null, name: null };
+
+/* ── Detect Manus session ── */
+function initManusSession() {
+  var params = new URLSearchParams(window.location.search);
+  var urlToken = params.get('manus_token');
+  var storedToken = null;
+  try { storedToken = localStorage.getItem('manus_integration_token'); } catch(e) {}
+
+  var token = urlToken || storedToken;
+  if (!token) return;
+
+  try { localStorage.setItem('manus_integration_token', token); } catch(e) {}
+
+  fetch(INTEGRATION_SERVER_URL + '/auth/validate-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ manusToken: token })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.valid) {
+      manusSession.token = data.integrationToken;
+      manusSession.email = data.email;
+      manusSession.name = data.name;
+
+      // Show banner
+      var banner = document.getElementById('iq-manus-banner');
+      var nameEl = document.getElementById('iq-manus-name');
+      if (banner && nameEl) {
+        nameEl.textContent = data.name || data.email;
+        banner.style.display = 'flex';
+      }
+
+      // Pre-fill email gate fields
+      var nameField = document.getElementById('iq-name');
+      var emailField = document.getElementById('iq-email');
+      if (nameField && data.name) nameField.value = data.name;
+      if (emailField && data.email) emailField.value = data.email;
+    }
+  })
+  .catch(function(err) {
+    console.warn('[Manus Integration] Session validation failed:', err);
+  });
+}
+
+/* ── Sync quiz results to Manus ── */
+function syncIkigaiToManus(data) {
+  var headers = { 'Content-Type': 'application/json' };
+  if (manusSession.token) {
+    headers['Authorization'] = 'Bearer ' + manusSession.token;
+  }
+
+  fetch(INTEGRATION_SERVER_URL + '/quiz/ikigai', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(data)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(result) {
+    console.log('[Manus Integration] Ikigai synced:', result);
+  })
+  .catch(function(err) {
+    console.warn('[Manus Integration] Sync failed:', err);
+  });
+}
+
+// ── Courses from Metaobjects ──
+var COURSES = [
+  {%- for course in shop.metaobjects['course'].values -%}
+  {
+    handle: "{{ course.system.handle }}",
+    title: {{ course['title'] | strip | json }},
+    cat: {{ course['category'] | default: 'Business' | strip | json }},
+    level: {{ course['level'] | default: '' | strip | json }},
+    fees: {{ course['fees'] | default: '' | strip | json }},
+    desc: {{ course['short_description'] | default: '' | strip | json }},
+    img: "{{ course['image'] | image_url: width: 600 }}"
+  },
+  {%- endfor -%}
+];
+
+// ── Questions ──
+var QUESTIONS = [
+  { id:"love1", pillar:"love", pillarLabel:"❤️ What You Love", q:"What type of activities make you lose track of time?", opts:[
+    { label:"Solving puzzles, coding, or building things", tags:["Technology","Computing"], emoji:"🧩" },
+    { label:"Helping people, listening, and giving advice", tags:["Psychology","Health"], emoji:"🤝" },
+    { label:"Planning, organising, and leading projects", tags:["Business","Project Management"], emoji:"📋" },
+    { label:"Working with your hands, building, designing", tags:["Construction","Project Management"], emoji:"🔧" },
+  ]},
+  { id:"love2", pillar:"love", pillarLabel:"❤️ What You Love", q:"Which topic could you read about for hours?", opts:[
+    { label:"AI, apps, cybersecurity, or digital innovation", tags:["Technology","Computing"], emoji:"💻" },
+    { label:"Human behaviour, mental health, or neuroscience", tags:["Psychology"], emoji:"🧠" },
+    { label:"Entrepreneurship, marketing, or finance", tags:["Business"], emoji:"📈" },
+    { label:"Architecture, engineering, or sustainable building", tags:["Construction"], emoji:"🏗️" },
+  ]},
+  { id:"love3", pillar:"love", pillarLabel:"❤️ What You Love", q:"What would you do if money wasn't an issue?", opts:[
+    { label:"Build a tech startup or create an app", tags:["Technology","Business"], emoji:"🚀" },
+    { label:"Open a wellness centre or become a therapist", tags:["Psychology","Health"], emoji:"🧘" },
+    { label:"Run a business empire or invest globally", tags:["Business"], emoji:"🌍" },
+    { label:"Design and build sustainable homes", tags:["Construction"], emoji:"🏠" },
+  ]},
+  { id:"good1", pillar:"good", pillarLabel:"💡 What You're Good At", q:"Which skill comes most naturally to you?", opts:[
+    { label:"Logical thinking and problem-solving", tags:["Technology","Computing"], emoji:"🎯" },
+    { label:"Empathy and understanding emotions", tags:["Psychology"], emoji:"💜" },
+    { label:"Communication and persuasion", tags:["Business"], emoji:"🗣️" },
+    { label:"Spatial awareness and practical skills", tags:["Construction","Project Management"], emoji:"📐" },
+  ]},
+  { id:"good2", pillar:"good", pillarLabel:"💡 What You're Good At", q:"In a group project, what role do you naturally take?", opts:[
+    { label:"The analyst — I research and find solutions", tags:["Technology","Computing"], emoji:"🔍" },
+    { label:"The mediator — I keep everyone motivated", tags:["Psychology","Health"], emoji:"🤗" },
+    { label:"The leader — I organise and delegate", tags:["Business","Project Management"], emoji:"👑" },
+    { label:"The builder — I make things happen practically", tags:["Construction"], emoji:"⚒️" },
+  ]},
+  { id:"world1", pillar:"world", pillarLabel:"🌍 What the World Needs", q:"What global issue do you care about most?", opts:[
+    { label:"Digital inequality and access to technology", tags:["Technology","Computing"], emoji:"🌐" },
+    { label:"Mental health crisis and emotional wellbeing", tags:["Psychology","Health"], emoji:"💚" },
+    { label:"Economic inequality and lack of opportunities", tags:["Business"], emoji:"⚖️" },
+    { label:"Housing crisis and sustainable infrastructure", tags:["Construction"], emoji:"🏘️" },
+  ]},
+  { id:"world2", pillar:"world", pillarLabel:"🌍 What the World Needs", q:"How would you like to make a difference?", opts:[
+    { label:"Creating technology that solves real problems", tags:["Technology"], emoji:"💡" },
+    { label:"Helping individuals overcome personal challenges", tags:["Psychology","Health"], emoji:"🌱" },
+    { label:"Creating jobs and economic growth", tags:["Business"], emoji:"📊" },
+    { label:"Building better, safer communities", tags:["Construction","Project Management"], emoji:"🏗️" },
+  ]},
+  { id:"paid1", pillar:"paid", pillarLabel:"💷 What You Can Be Paid For", q:"Which industry excites you the most?", opts:[
+    { label:"Tech — software, AI, cybersecurity", tags:["Technology","Computing"], emoji:"🖥️" },
+    { label:"Healthcare — NHS, private practice, wellbeing", tags:["Health","Psychology"], emoji:"🏥" },
+    { label:"Business — consulting, finance, marketing", tags:["Business"], emoji:"💼" },
+    { label:"Construction — project management, engineering", tags:["Construction","Project Management"], emoji:"🏗️" },
+  ]},
+  { id:"paid2", pillar:"paid", pillarLabel:"💷 What You Can Be Paid For", q:"Where do you see yourself working?", opts:[
+    { label:"Office or remote, in a tech company", tags:["Technology","Computing"], emoji:"🏢" },
+    { label:"Clinic, hospital, or counselling room", tags:["Psychology","Health"], emoji:"🏥" },
+    { label:"Construction site or outdoor projects", tags:["Construction"], emoji:"🏗️" },
+    { label:"My own business or startup", tags:["Business"], emoji:"🚀" },
+  ]},
+  { id:"paid3", pillar:"paid", pillarLabel:"💷 What You Can Be Paid For", q:"What salary range do you aspire to in 5 years?", opts:[
+    { label:"£40-60k (tech & digital roles)", tags:["Technology"], emoji:"💻" },
+    { label:"£35-50k (healthcare & psychology)", tags:["Psychology","Health"], emoji:"🩺" },
+    { label:"£45-70k (business & finance)", tags:["Business"], emoji:"📊" },
+    { label:"£40-65k (construction management)", tags:["Construction"], emoji:"🏗️" },
+  ]},
+  { id:"paid4", pillar:"paid", pillarLabel:"💷 What You Can Be Paid For", q:"How important is job security to you?", opts:[
+    { label:"Very — I want a stable tech career with growth", tags:["Technology"], emoji:"📱" },
+    { label:"Important — healthcare is always in demand", tags:["Health","Psychology"], emoji:"🏥" },
+    { label:"I prefer flexibility and entrepreneurial freedom", tags:["Business"], emoji:"🦅" },
+    { label:"Very — construction is booming and always needed", tags:["Construction","Project Management"], emoji:"🏗️" },
+  ]},
+];
+
+// ── State ──
+var state = {
+  currentQ: 0,
+  answers: {},
+};
+
+// ── Helpers ──
+function show(id) {
+  var stages = document.querySelectorAll('.iq-stage');
+  stages.forEach(function(s) { s.style.display = 'none'; });
+  var el = document.getElementById(id);
+  if (el) { el.style.display = ''; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+
+function calcTagCounts() {
+  var counts = {};
+  Object.values(state.answers).forEach(function(tags) {
+    tags.forEach(function(tag) { counts[tag] = (counts[tag] || 0) + 1; });
+  });
+  return counts;
+}
+
+function getTopDomain(counts) {
+  var sorted = Object.entries(counts).sort(function(a, b) { return b[1] - a[1]; });
+  return sorted[0] ? sorted[0][0] : 'Business';
+}
+
+function getSecondDomain(counts) {
+  var sorted = Object.entries(counts).sort(function(a, b) { return b[1] - a[1]; });
+  return sorted[1] ? sorted[1][0] : null;
+}
+
+function getRecommendedCourses(topDomain, secondDomain) {
+  var primary = COURSES.filter(function(c) { return c.cat === topDomain; });
+  var secondary = secondDomain ? COURSES.filter(function(c) { return c.cat === secondDomain; }).slice(0, 2) : [];
+  var result = primary.concat(secondary);
+  if (result.length === 0) result = COURSES.slice(0, 4);
+  return result.slice(0, 6);
+}
+
+// ── Quiz render ──
+function renderQuestion() {
+  var q = QUESTIONS[state.currentQ];
+  var total = QUESTIONS.length;
+  var pct = Math.round((state.currentQ / total) * 100);
+
+  document.getElementById('iq-q-count').textContent = 'Question ' + (state.currentQ + 1) + ' of ' + total;
+  document.getElementById('iq-pillar-badge').textContent = q.pillarLabel;
+  document.getElementById('iq-progress-fill').style.width = pct + '%';
+  document.getElementById('iq-question-text').textContent = q.q;
+  document.getElementById('iq-back-btn').style.display = state.currentQ > 0 ? '' : 'none';
+
+  var opts = document.getElementById('iq-options');
+  opts.innerHTML = '';
+  q.opts.forEach(function(opt) {
+    var btn = document.createElement('button');
+    btn.className = 'iq-option';
+    btn.innerHTML = '<span class="iq-option__emoji">' + opt.emoji + '</span><span>' + opt.label + '</span>';
+    btn.addEventListener('click', function() { IQ.answer(opt.tags); });
+    opts.appendChild(btn);
+  });
+
+  var wrap = document.getElementById('iq-question-wrap');
+  wrap.style.animation = 'none';
+  wrap.offsetHeight;
+  wrap.style.animation = '';
+}
+
+// ── Results render ──
+function renderResults(name) {
+  var counts = calcTagCounts();
+  var topDomain = getTopDomain(counts);
+  var secondDomain = getSecondDomain(counts);
+  var courses = getRecommendedCourses(topDomain, secondDomain);
+
+  var nameEl = document.getElementById('iq-res-name');
+  if (nameEl) {
+    var firstName = (name || '').trim().split(' ')[0];
+    nameEl.textContent = firstName ? firstName + ', ' : '';
+  }
+  document.getElementById('iq-res-domain').textContent = topDomain;
+
+  var maxCount = Math.max.apply(null, Object.values(counts));
+  var grid = document.getElementById('iq-breakdown-grid');
+  grid.innerHTML = '';
+  Object.entries(counts).sort(function(a,b){ return b[1]-a[1]; }).forEach(function(entry) {
+    var pct = Math.round((entry[1] / maxCount) * 100);
+    var item = document.createElement('div');
+    item.className = 'iq-breakdown-item';
+    item.innerHTML = '<div class="iq-breakdown-pct">' + pct + '%</div>'
+      + '<div class="iq-breakdown-label">' + entry[0] + '</div>'
+      + '<div class="iq-breakdown-bar"><div class="iq-breakdown-fill" style="width:0%"></div></div>';
+    grid.appendChild(item);
+  });
+  setTimeout(function() {
+    grid.querySelectorAll('.iq-breakdown-fill').forEach(function(bar, i) {
+      var pct = Object.entries(counts).sort(function(a,b){ return b[1]-a[1]; })[i];
+      if (pct) bar.style.width = Math.round((pct[1] / maxCount) * 100) + '%';
+    });
+  }, 100);
+
+  var coursesGrid = document.getElementById('iq-courses-grid');
+  var noCoursesEl = document.getElementById('iq-no-courses');
+  coursesGrid.innerHTML = '';
+  if (courses.length === 0) {
+    noCoursesEl.style.display = '';
+  } else {
+    noCoursesEl.style.display = 'none';
+    courses.forEach(function(c, i) {
+      var card = document.createElement('a');
+      card.href = '/pages/courses/' + c.handle;
+      card.className = 'iq-course-card' + (i === 0 ? ' iq-course-card--best' : '');
+      var imgHtml = c.img
+        ? '<img src="' + c.img + '" alt="' + c.title + '" loading="lazy">'
+        : '<div style="width:100%;height:100%;background:#2d3f4f;display:flex;align-items:center;justify-content:center;opacity:.4;">📚</div>';
+      card.innerHTML = '<div class="iq-course-card__img">'
+        + imgHtml
+        + '<div class="iq-course-card__img-overlay"></div>'
+        + (i === 0 ? '<span class="iq-best-badge">⭐ Best Match</span>' : '')
+        + '<div class="iq-course-card__name">' + c.title + '</div>'
+        + '</div>'
+        + '<div class="iq-course-card__body">'
+        + '<div class="iq-course-card__meta">'
+        + '<span>🎓 ' + (c.level || '') + '</span>'
+        + (c.fees ? '<span class="iq-course-card__fees">£' + c.fees + '/yr</span>' : '')
+        + '</div>'
+        + (c.desc ? '<p class="iq-course-card__desc">' + c.desc + '</p>' : '')
+        + '<span class="iq-course-card__cta">View Details →</span>'
+        + '</div>';
+      coursesGrid.appendChild(card);
+    });
+  }
+}
+
+// ── Public API ──
+window.IQ = {
+  start: function() {
+    state.currentQ = 0;
+    state.answers = {};
+    show('iq-stage-quiz');
+    renderQuestion();
+  },
+
+  answer: function(tags) {
+    var q = QUESTIONS[state.currentQ];
+    state.answers[q.id] = tags;
+
+    if (state.currentQ < QUESTIONS.length - 1) {
+      state.currentQ++;
+      renderQuestion();
+    } else {
+      // ═══ MANUS INTEGRATION: If authenticated, skip email gate ═══
+      if (manusSession.email) {
+        // Sync results immediately
+        var counts = calcTagCounts();
+        var topDomain = getTopDomain(counts);
+        syncIkigaiToManus({
+          name: manusSession.name,
+          email: manusSession.email,
+          answers: state.answers,
+          topDomain: topDomain,
+          tagCounts: counts,
+          recommendedCourses: getRecommendedCourses(topDomain, getSecondDomain(counts)).map(function(c) { return c.handle; }),
+          source: 'shopify'
+        });
+
+        renderResults(manusSession.name || '');
+        show('iq-stage-results');
+      } else {
+        // Show email gate for non-authenticated users
+        renderResults('');
+        show('iq-stage-results');
+      }
+    }
+  },
+
+  back: function() {
+    if (state.currentQ > 0) {
+      state.currentQ--;
+      renderQuestion();
+    }
+  },
+
+  submitEmail: function(e) {
+    e.preventDefault();
+    var name = document.getElementById('iq-name').value.trim();
+    var email = document.getElementById('iq-email').value.trim();
+    if (!name || !email) return;
+
+    // ═══ MANUS INTEGRATION: Sync results with email ═══
+    var phone = document.getElementById('iq-phone').value.trim();
+    var counts = calcTagCounts();
+    var topDomain = getTopDomain(counts);
+
+    syncIkigaiToManus({
+      name: name,
+      email: email,
+      phone: phone,
+      answers: state.answers,
+      topDomain: topDomain,
+      tagCounts: counts,
+      recommendedCourses: getRecommendedCourses(topDomain, getSecondDomain(counts)).map(function(c) { return c.handle; }),
+      source: 'shopify'
+    });
+
+    // GTM / Klaviyo (original logic preserved)
+    try {
+      if (window.dataLayer) {
+        window.dataLayer.push({ event: 'ikigai_lead', email: email, name: name, topDomain: topDomain });
+      }
+      if (window._learnq) {
+        window._learnq.push(['identify', { '$email': email, '$first_name': name.split(' ')[0], 'IkigaiTopDomain': topDomain }]);
+        window._learnq.push(['track', 'Ikigai Quiz Completed', { topDomain: topDomain, email: email }]);
+      }
+    } catch(err) {}
+
+    renderResults(name);
+    show('iq-stage-results');
+  }
+};
+
+// Init
+show('iq-stage-intro');
+initManusSession();
+
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Ikigai Quiz (Manus)",
+  "tag": "section",
+  "settings": [
+    {
+      "type": "url",
+      "id": "eligibility_url",
+      "label": "Eligibility page URL"
+    },
+    {
+      "type": "url",
+      "id": "courses_url",
+      "label": "Courses archive page URL"
+    },
+    {
+      "type": "text",
+      "id": "integration_server_url",
+      "label": "Integration Server URL",
+      "default": "https://your-integration-server.com",
+      "info": "URL-ul serverului de integrare Shopify-Manus"
+    }
+  ],
+  "presets": [{ "name": "Ikigai Quiz (Manus)" }]
+}
+{% endschema %}

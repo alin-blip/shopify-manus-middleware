@@ -1,0 +1,140 @@
+{% comment %}
+  Snippet: manus-auth-gate.liquid
+  
+  ═══════════════════════════════════════════════
+  MANUS AUTHENTICATION GATE FOR SHOPIFY
+  
+  Include this in your theme.liquid or layout file.
+  It checks if the visitor has an active Manus session.
+  If not, it shows a banner prompting them to log in first.
+  
+  For checkout blocking: add to cart page or checkout layout.
+  ═══════════════════════════════════════════════
+{% endcomment %}
+
+<div id="efy-auth-gate" style="display:none;" class="efy-auth-gate">
+  <div class="efy-auth-gate__inner">
+    <span class="efy-auth-gate__icon">🔒</span>
+    <div class="efy-auth-gate__text">
+      <strong>EduForYou Account Required</strong>
+      <span>Please log in to your EduForYou account to continue shopping. Your purchases will be linked to your student profile.</span>
+    </div>
+    <a id="efy-auth-gate-link" href="#" class="efy-auth-gate__btn">Log In to EduForYou</a>
+  </div>
+</div>
+
+<!-- Manus session indicator (shown when authenticated) -->
+<div id="efy-auth-indicator" style="display:none;" class="efy-auth-indicator">
+  <span class="efy-auth-indicator__check">✓</span>
+  <span>Logged in as <strong id="efy-auth-indicator-name"></strong></span>
+</div>
+
+<style>
+.efy-auth-gate {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #fef2f2; border-top: 2px solid #fca5a5;
+  padding: 1rem; z-index: 9999;
+  animation: efySlideUp .3s ease;
+}
+@keyframes efySlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.efy-auth-gate__inner {
+  max-width: 960px; margin: 0 auto;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.efy-auth-gate__icon { font-size: 1.5rem; flex-shrink: 0; }
+.efy-auth-gate__text { flex: 1; min-width: 200px; }
+.efy-auth-gate__text strong { display: block; color: #991b1b; font-weight: 700; }
+.efy-auth-gate__text span { color: #7f1d1d; font-size: .9rem; }
+.efy-auth-gate__btn {
+  display: inline-flex; align-items: center; gap: .5rem;
+  background: #E67E22; color: #fff; font-weight: 700;
+  padding: .6rem 1.5rem; border-radius: 8px;
+  text-decoration: none; white-space: nowrap;
+  transition: background .2s;
+}
+.efy-auth-gate__btn:hover { background: #c96b15; }
+
+.efy-auth-indicator {
+  position: fixed; top: 0; right: 0;
+  background: #ecfdf5; border-bottom-left-radius: 8px;
+  padding: .4rem .75rem; z-index: 9998;
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .8rem; color: #065f46;
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+}
+.efy-auth-indicator__check {
+  width: 18px; height: 18px;
+  background: #10b981; color: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .6rem; font-weight: 700;
+}
+</style>
+
+<script>
+(function() {
+  var INTEGRATION_SERVER_URL = '{{ settings.integration_server_url | default: "https://your-integration-server.com" }}';
+  var MANUS_BASE_URL = 'https://www.eduforyou.co.uk';
+  var REQUIRE_AUTH_FOR_CHECKOUT = {{ settings.require_manus_auth | default: false }};
+
+  // Check for manus_token
+  var params = new URLSearchParams(window.location.search);
+  var urlToken = params.get('manus_token');
+  var storedToken = null;
+  try { storedToken = localStorage.getItem('manus_integration_token'); } catch(e) {}
+
+  var token = urlToken || storedToken;
+
+  if (token) {
+    // Store token
+    try { localStorage.setItem('manus_integration_token', token); } catch(e) {}
+
+    // Validate session
+    fetch(INTEGRATION_SERVER_URL + '/auth/validate-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manusToken: token })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.valid) {
+        // Show authenticated indicator
+        var indicator = document.getElementById('efy-auth-indicator');
+        var nameEl = document.getElementById('efy-auth-indicator-name');
+        if (indicator && nameEl) {
+          nameEl.textContent = data.name || data.email;
+          indicator.style.display = 'flex';
+        }
+
+        // Store session info for other pages
+        try {
+          localStorage.setItem('manus_user_email', data.email);
+          localStorage.setItem('manus_user_name', data.name || '');
+        } catch(e) {}
+      } else {
+        showAuthGate();
+      }
+    })
+    .catch(function() {
+      showAuthGate();
+    });
+  } else if (REQUIRE_AUTH_FOR_CHECKOUT) {
+    showAuthGate();
+  }
+
+  function showAuthGate() {
+    if (!REQUIRE_AUTH_FOR_CHECKOUT) return;
+
+    // Only show on cart/checkout pages
+    var path = window.location.pathname;
+    if (path.indexOf('/cart') === -1 && path.indexOf('/checkout') === -1) return;
+
+    var gate = document.getElementById('efy-auth-gate');
+    var link = document.getElementById('efy-auth-gate-link');
+    if (gate) gate.style.display = '';
+    if (link) {
+      var returnUrl = encodeURIComponent(window.location.href);
+      link.href = MANUS_BASE_URL + '/auth/login?returnTo=/student/dashboard&shopifyReturn=' + returnUrl;
+    }
+  }
+})();
+</script>

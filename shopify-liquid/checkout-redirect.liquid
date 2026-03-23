@@ -1,0 +1,99 @@
+{% comment %}
+  Snippet: checkout-redirect.liquid
+  
+  ═══════════════════════════════════════════════
+  POST-CHECKOUT REDIRECT TO MANUS DASHBOARD
+  
+  Add this to your Shopify thank-you / order confirmation page.
+  It redirects the customer back to the Manus EduForYou dashboard
+  after a successful checkout, passing order info via the
+  integration server for session restoration.
+  
+  Usage: Include in your order status / thank-you page template.
+  ═══════════════════════════════════════════════
+{% endcomment %}
+
+{% if checkout.order %}
+<div id="efy-post-checkout" class="efy-post-checkout">
+  <div class="efy-post-checkout__card">
+    <div class="efy-post-checkout__icon">✓</div>
+    <h3>Order Confirmed!</h3>
+    <p>Thank you for your purchase. You will be redirected to your EduForYou dashboard in <span id="efy-countdown">5</span> seconds...</p>
+    <a id="efy-redirect-link" href="#" class="efy-post-checkout__btn">
+      Go to My Dashboard →
+    </a>
+    <p class="efy-post-checkout__note">Your purchase will appear in your student dashboard automatically.</p>
+  </div>
+</div>
+
+<style>
+.efy-post-checkout {
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+.efy-post-checkout__card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.1);
+  padding: 2rem;
+  text-align: center;
+}
+.efy-post-checkout__icon {
+  width: 64px; height: 64px;
+  background: #ecfdf5; color: #10b981;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1rem;
+  font-size: 1.75rem; font-weight: 900;
+}
+.efy-post-checkout__card h3 {
+  font-weight: 800; color: #1a252f; margin: 0 0 .75rem;
+}
+.efy-post-checkout__card p {
+  color: #64748b; line-height: 1.6; margin: 0 0 1rem;
+}
+.efy-post-checkout__btn {
+  display: inline-flex; align-items: center; gap: .5rem;
+  background: #E67E22; color: #fff; font-weight: 700;
+  padding: .85rem 2rem; border-radius: 10px;
+  text-decoration: none; transition: background .2s;
+}
+.efy-post-checkout__btn:hover { background: #c96b15; }
+.efy-post-checkout__note {
+  color: #999; font-size: .85rem; margin-top: 1rem;
+}
+</style>
+
+<script>
+(function() {
+  var INTEGRATION_SERVER_URL = '{{ settings.integration_server_url | default: "https://your-integration-server.com" }}';
+  
+  var email = {{ checkout.email | json }};
+  var orderId = {{ checkout.order.id | json }};
+  var orderNumber = {{ checkout.order.name | json }};
+
+  // Build the redirect URL through the integration server
+  var redirectUrl = INTEGRATION_SERVER_URL + '/auth/manus-redirect'
+    + '?email=' + encodeURIComponent(email || '')
+    + '&orderId=' + encodeURIComponent(orderId || '')
+    + '&orderNumber=' + encodeURIComponent(orderNumber || '');
+
+  // Set the link
+  var link = document.getElementById('efy-redirect-link');
+  if (link) link.href = redirectUrl;
+
+  // Countdown and auto-redirect
+  var count = 5;
+  var countEl = document.getElementById('efy-countdown');
+  var timer = setInterval(function() {
+    count--;
+    if (countEl) countEl.textContent = count;
+    if (count <= 0) {
+      clearInterval(timer);
+      window.location.href = redirectUrl;
+    }
+  }, 1000);
+})();
+</script>
+{% endif %}

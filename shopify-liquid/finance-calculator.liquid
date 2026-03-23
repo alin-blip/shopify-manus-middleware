@@ -1,0 +1,428 @@
+{% comment %}
+  Section: finance-calculator.liquid
+  Finance Calculator pentru EduForYou — adaptat din React/TSX pentru Shopify Liquid + vanilla JS
+  
+  ═══════════════════════════════════════════════
+  MODIFIED: Manus EduForYou Integration
+  - Adds "Save My Calculation" button that syncs to Manus
+  - Detects Manus session via manus_token
+  - Links results to student profile by email
+  ═══════════════════════════════════════════════
+{% endcomment %}
+
+<div class="efy-fc-wrap">
+
+  <div class="efy-fc-body page-width">
+
+    <!-- Manus Session Banner -->
+    <div id="fc-manus-banner" style="display:none;" class="efy-fc-manus-banner">
+      <span class="efy-fc-manus-check">✓</span>
+      <span>Connected as <strong id="fc-manus-name"></strong></span>
+    </div>
+
+    <div class="efy-fc-grid">
+
+      <!-- LEFT: Inputs -->
+      <div class="efy-fc-inputs">
+        <div class="efy-fc-card">
+
+          <div class="efy-fc-field">
+            <label class="efy-fc-label" for="efy-living">Where will you live while studying?</label>
+            <div class="efy-fc-select-wrap">
+              <select id="efy-living" class="efy-fc-select">
+                <option value="outsideLondon" selected>Outside London</option>
+                <option value="london">London</option>
+                <option value="withParents">With parents</option>
+              </select>
+              <svg class="efy-fc-select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+
+          <div class="efy-fc-field">
+            <label class="efy-fc-label">Course duration: <strong id="efy-dur-label">3 years</strong></label>
+            <input type="range" id="efy-duration" class="efy-fc-range" min="1" max="4" step="1" value="3">
+            <div class="efy-fc-range-labels"><span>1 year</span><span>4 years</span></div>
+          </div>
+
+          <div class="efy-fc-field">
+            <label class="efy-fc-label">Expected salary after graduation: <strong id="efy-sal-label">£30,000/year</strong></label>
+            <input type="range" id="efy-salary" class="efy-fc-range" min="15000" max="80000" step="1000" value="30000">
+            <div class="efy-fc-range-labels"><span>£15,000</span><span>£80,000</span></div>
+          </div>
+
+          <!-- MANUS INTEGRATION: Save calculation button -->
+          <div id="fc-save-section" class="efy-fc-save-section">
+            <div id="fc-save-auth" style="display:none;">
+              <button class="efy-fc-save-btn" onclick="FC.saveCalculation()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Save to My Dashboard
+              </button>
+              <span id="fc-save-status" class="efy-fc-save-status"></span>
+            </div>
+            <div id="fc-save-email" style="display:none;">
+              <p class="efy-fc-save-prompt">Save this calculation to your profile:</p>
+              <div class="efy-fc-save-form">
+                <input type="email" id="fc-email" placeholder="your@email.com" class="efy-fc-save-input">
+                <button class="efy-fc-save-btn" onclick="FC.saveWithEmail()">Save</button>
+              </div>
+              <span id="fc-save-email-status" class="efy-fc-save-status"></span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- RIGHT: Results -->
+      <div class="efy-fc-results">
+
+        <!-- Finance Breakdown -->
+        <div class="efy-fc-card efy-fc-card--dark">
+          <h5 class="efy-fc-card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E67E22" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Your Finance Breakdown
+          </h5>
+          <div class="efy-fc-breakdown">
+            <div class="efy-fc-row">
+              <span>Tuition Fee Loan</span>
+              <strong class="efy-fc-orange" id="efy-tuition">£9,535/yr</strong>
+            </div>
+            <div class="efy-fc-row">
+              <span>Maintenance Loan</span>
+              <strong class="efy-fc-orange" id="efy-maintenance">£10,227/yr</strong>
+            </div>
+            <div class="efy-fc-row">
+              <span>Total per Year</span>
+              <strong class="efy-fc-white efy-fc-lg" id="efy-total-yr">£19,762</strong>
+            </div>
+            <div class="efy-fc-row efy-fc-row--highlight">
+              <span id="efy-total-label">Total over 3 years</span>
+              <strong class="efy-fc-orange efy-fc-xl" id="efy-total-course">£59,286</strong>
+            </div>
+          </div>
+        </div><br>
+
+        <!-- Repayment -->
+        <div class="efy-fc-card">
+          <h5 class="efy-fc-card-title efy-fc-card-title--dark">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E67E22" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            Repayment Estimate
+          </h5>
+          <div class="efy-fc-repayment">
+            <div class="efy-fc-repayment__amount">
+              <span class="efy-fc-repayment__pound">£</span><span id="efy-monthly">38</span><span class="efy-fc-repayment__mo">/month</span>
+            </div>
+            <p class="efy-fc-repayment__based" id="efy-repay-based">Based on £30,000/year salary</p>
+          </div>
+          <div class="efy-fc-info">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>You only repay 9% of income above £25,000. Remaining balance is cancelled after 40 years (Plan 5).</span>
+          </div>
+        </div><br>
+
+        <a href="{{ section.settings.eligibility_url | default: '/pages/eligibility' }}" class="efy-fc-cta">
+          Check Your Eligibility
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+/* ── Wrap & Hero ── */
+.efy-fc-wrap { font-family: inherit; }
+.efy-fc-body { padding: 3rem 0 4rem; }
+
+/* ── Grid ── */
+.efy-fc-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; }
+@media (max-width: 860px) { .efy-fc-grid { grid-template-columns: 1fr; } }
+
+/* ── Cards ── */
+.efy-fc-card { background: #fff; border-radius: 14px; box-shadow: 0 2px 16px rgba(0,0,0,.08); padding: 2rem; display: flex; flex-direction: column; gap: 1.75rem; }
+.efy-fc-card--dark { background: #1a252f; color: #fff; }
+
+/* ── Fields ── */
+.efy-fc-field { display: flex; flex-direction: column; gap: .5rem; }
+.efy-fc-label { font-weight: 500; color: #1a252f; }
+.efy-fc-label strong { font-weight: 700; }
+
+/* ── Select ── */
+.efy-fc-select-wrap { position: relative; }
+.efy-fc-select { width: 100%; padding: .65rem 2.5rem .65rem 1rem; border: 1px solid rgba(0,0,0,.15); border-radius: 8px; font-family: inherit; background: #fff; color: #1a252f; appearance: none; -webkit-appearance: none; cursor: pointer; outline: none; transition: border-color .15s; }
+.efy-fc-select:focus { border-color: #E67E22; }
+.efy-fc-select-arrow { position: absolute; right: .875rem; top: 50%; transform: translateY(-50%); pointer-events: none; color: #666; }
+
+/* ── Range slider ── */
+.efy-fc-range { width: 100%; height: 4px; accent-color: #1a252f; cursor: pointer; margin: .25rem 0; }
+.efy-fc-range-labels { display: flex; justify-content: space-between; color: #999; margin-top: .2rem; }
+
+/* ── Breakdown ── */
+.efy-fc-card-title { font-weight: 700; color: #fff; display: flex; align-items: center; gap: .5rem; margin: 0 0 .25rem; }
+.efy-fc-card-title--dark { color: #1a252f; }
+.efy-fc-breakdown { display: flex; flex-direction: column; gap: 0; }
+.efy-fc-row { display: flex; justify-content: space-between; align-items: center; padding: .75rem 0; border-bottom: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.6); }
+.efy-fc-row--highlight { background: rgba(255,255,255,.05); border-radius: 8px; padding: .75rem 1rem; border: none; margin-top: .25rem; color: #fff; font-weight: 600; }
+.efy-fc-orange { color: #E67E22 !important; }
+.efy-fc-white { color: #fff !important; }
+
+/* ── Repayment ── */
+.efy-fc-repayment { text-align: center; padding: 1rem 0 .5rem; }
+.efy-fc-repayment__amount { font-weight: 800; color: #1a252f; line-height: 1; }
+.efy-fc-repayment__pound { vertical-align: super; }
+.efy-fc-repayment__mo { font-weight: 400; color: #999; margin-left: .15rem; }
+.efy-fc-repayment__based { color: #999; margin: .5rem 0 0; }
+
+/* ── Info box ── */
+.efy-fc-info { display: flex; gap: .5rem; align-items: flex-start; background: #f5f3f0; border-radius: 8px; padding: .75rem; color: #777; line-height: 1.5; }
+.efy-fc-info svg { flex-shrink: 0; margin-top: 1px; }
+
+/* ── CTA ── */
+.efy-fc-cta { display: flex; align-items: center; justify-content: center; gap: .5rem; background: #E67E22; color: #1a252f; font-weight: 700; padding: 1rem; border-radius: 10px; text-decoration: none; transition: background .2s; }
+.efy-fc-cta:hover { background: #c96b15; color: #1a252f; }
+
+/* ── Manus Banner ── */
+.efy-fc-manus-banner {
+  display: flex; align-items: center; gap: .5rem;
+  background: #ecfdf5; border: 1px solid #a7f3d0;
+  color: #065f46; border-radius: 8px; padding: .6rem 1rem;
+  margin-bottom: 1.5rem; font-size: .9rem;
+}
+.efy-fc-manus-check {
+  flex-shrink: 0; width: 22px; height: 22px;
+  background: #10b981; color: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .7rem; font-weight: 700;
+}
+
+/* ── Save Section ── */
+.efy-fc-save-section { margin-top: .5rem; }
+.efy-fc-save-btn {
+  display: inline-flex; align-items: center; gap: .5rem;
+  background: #1a252f; color: #fff; font-weight: 600;
+  padding: .65rem 1.25rem; border-radius: 8px; border: none;
+  cursor: pointer; font-family: inherit; transition: background .2s;
+}
+.efy-fc-save-btn:hover { background: #2d3f4f; }
+.efy-fc-save-status { display: block; margin-top: .4rem; font-size: .85rem; color: #10b981; }
+.efy-fc-save-prompt { margin: 0 0 .5rem; font-weight: 500; color: #555; font-size: .9rem; }
+.efy-fc-save-form { display: flex; gap: .5rem; }
+.efy-fc-save-input {
+  flex: 1; padding: .55rem .75rem; border: 1.5px solid #e5e7eb;
+  border-radius: 8px; font-family: inherit; outline: none;
+}
+.efy-fc-save-input:focus { border-color: #E67E22; }
+</style>
+
+<script>
+(function() {
+
+  /* ═══════════════════════════════════════════════
+     MANUS INTEGRATION CONFIG
+     ═══════════════════════════════════════════════ */
+  var INTEGRATION_SERVER_URL = '{{ section.settings.integration_server_url | default: "https://your-integration-server.com" }}';
+
+  // Manus session state
+  var manusSession = { token: null, email: null, name: null };
+
+  /* ── Detect Manus session ── */
+  function initManusSession() {
+    var params = new URLSearchParams(window.location.search);
+    var urlToken = params.get('manus_token');
+    var storedToken = null;
+    try { storedToken = localStorage.getItem('manus_integration_token'); } catch(e) {}
+
+    var token = urlToken || storedToken;
+    if (!token) {
+      // Show email-based save form
+      document.getElementById('fc-save-email').style.display = '';
+      return;
+    }
+
+    try { localStorage.setItem('manus_integration_token', token); } catch(e) {}
+
+    fetch(INTEGRATION_SERVER_URL + '/auth/validate-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manusToken: token })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.valid) {
+        manusSession.token = data.integrationToken;
+        manusSession.email = data.email;
+        manusSession.name = data.name;
+
+        // Show banner
+        var banner = document.getElementById('fc-manus-banner');
+        var nameEl = document.getElementById('fc-manus-name');
+        if (banner && nameEl) {
+          nameEl.textContent = data.name || data.email;
+          banner.style.display = 'flex';
+        }
+
+        // Show authenticated save button
+        document.getElementById('fc-save-auth').style.display = '';
+      } else {
+        document.getElementById('fc-save-email').style.display = '';
+      }
+    })
+    .catch(function(err) {
+      console.warn('[Manus Integration] Session validation failed:', err);
+      document.getElementById('fc-save-email').style.display = '';
+    });
+  }
+
+  // ── Data (din FINANCE_INFO) ──
+  var TUITION = 9535;
+  var MAINTENANCE = {
+    london:        13022,
+    outsideLondon: 10227,
+    withParents:    8610
+  };
+  var REPAYMENT_THRESHOLD = 25000;
+  var REPAYMENT_RATE = 9;
+
+  function fmt(n) {
+    return '£' + n.toLocaleString('en-GB');
+  }
+
+  function getCalcData() {
+    var living   = document.getElementById('efy-living').value;
+    var duration = parseInt(document.getElementById('efy-duration').value);
+    var salary   = parseInt(document.getElementById('efy-salary').value);
+
+    var maintenance  = MAINTENANCE[living] || 10227;
+    var totalPerYear = TUITION + maintenance;
+    var totalCourse  = totalPerYear * duration;
+    var monthly      = salary <= REPAYMENT_THRESHOLD
+      ? 0
+      : Math.round(((salary - REPAYMENT_THRESHOLD) * (REPAYMENT_RATE / 100)) / 12);
+
+    return {
+      livingLocation: living,
+      courseDuration: duration,
+      expectedSalary: salary,
+      tuitionPerYear: TUITION,
+      maintenancePerYear: maintenance,
+      totalPerYear: totalPerYear,
+      totalCourse: totalCourse,
+      monthlyRepayment: monthly
+    };
+  }
+
+  function calc() {
+    var data = getCalcData();
+
+    document.getElementById('efy-dur-label').textContent  = data.courseDuration + (data.courseDuration === 1 ? ' year' : ' years');
+    document.getElementById('efy-sal-label').textContent  = fmt(data.expectedSalary) + '/year';
+    document.getElementById('efy-tuition').textContent     = fmt(TUITION) + '/yr';
+    document.getElementById('efy-maintenance').textContent = fmt(data.maintenancePerYear) + '/yr';
+    document.getElementById('efy-total-yr').textContent    = fmt(data.totalPerYear);
+    document.getElementById('efy-total-label').textContent = 'Total over ' + data.courseDuration + (data.courseDuration === 1 ? ' year' : ' years');
+    document.getElementById('efy-total-course').textContent = fmt(data.totalCourse);
+    document.getElementById('efy-monthly').textContent     = data.monthlyRepayment.toLocaleString('en-GB');
+    document.getElementById('efy-repay-based').textContent = 'Based on ' + fmt(data.expectedSalary) + '/year salary';
+  }
+
+  /* ── Sync to Manus ── */
+  function syncFinanceToManus(email) {
+    var data = getCalcData();
+    data.email = email;
+    data.source = 'shopify';
+
+    var headers = { 'Content-Type': 'application/json' };
+    if (manusSession.token) {
+      headers['Authorization'] = 'Bearer ' + manusSession.token;
+    }
+
+    return fetch(INTEGRATION_SERVER_URL + '/quiz/finance', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data)
+    })
+    .then(function(r) { return r.json(); });
+  }
+
+  // ── Public API ──
+  window.FC = {
+    saveCalculation: function() {
+      if (!manusSession.email) return;
+
+      var statusEl = document.getElementById('fc-save-status');
+      statusEl.textContent = 'Saving...';
+      statusEl.style.color = '#666';
+
+      syncFinanceToManus(manusSession.email)
+        .then(function(result) {
+          statusEl.textContent = '✓ Saved to your dashboard';
+          statusEl.style.color = '#10b981';
+        })
+        .catch(function(err) {
+          statusEl.textContent = 'Failed to save. Please try again.';
+          statusEl.style.color = '#ef4444';
+        });
+    },
+
+    saveWithEmail: function() {
+      var email = document.getElementById('fc-email').value.trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        document.getElementById('fc-save-email-status').textContent = 'Please enter a valid email';
+        document.getElementById('fc-save-email-status').style.color = '#ef4444';
+        return;
+      }
+
+      var statusEl = document.getElementById('fc-save-email-status');
+      statusEl.textContent = 'Saving...';
+      statusEl.style.color = '#666';
+
+      syncFinanceToManus(email)
+        .then(function(result) {
+          statusEl.textContent = '✓ Saved! Check your dashboard at eduforyou.co.uk';
+          statusEl.style.color = '#10b981';
+        })
+        .catch(function(err) {
+          statusEl.textContent = 'Failed to save. Please try again.';
+          statusEl.style.color = '#ef4444';
+        });
+    }
+  };
+
+  document.getElementById('efy-living').addEventListener('change', calc);
+  document.getElementById('efy-duration').addEventListener('input', calc);
+  document.getElementById('efy-salary').addEventListener('input', calc);
+
+  calc();
+  initManusSession();
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Finance Calculator (Manus)",
+  "tag": "section",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "show_hero",
+      "label": "Show hero header",
+      "default": true
+    },
+    {
+      "type": "url",
+      "id": "eligibility_url",
+      "label": "Eligibility page URL",
+      "info": "Link-ul butonului Check Your Eligibility"
+    },
+    {
+      "type": "text",
+      "id": "integration_server_url",
+      "label": "Integration Server URL",
+      "default": "https://your-integration-server.com",
+      "info": "URL-ul serverului de integrare Shopify-Manus"
+    }
+  ],
+  "presets": [{ "name": "Finance Calculator (Manus)" }]
+}
+{% endschema %}
