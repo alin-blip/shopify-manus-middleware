@@ -218,48 +218,14 @@
 <script>
 (function() {
 
-  /* ── Manus Integration Config ── */
-  var INTEGRATION_SERVER_URL = 'https://shopify-integration-production-2810.up.railway.app';
-  var MANUS_TOKEN_KEY = 'edu_session_token';
+  /* ── EduForYou API Config (direct — middleware removed) ── */
+  var MANUS_API_URL = 'https://www.eduforyou.co.uk';
+  var INTEGRATION_SECRET = 'shopify_manus_secret_2026_eduforyou';
 
-  function getManusToken() {
-    try { return localStorage.getItem(MANUS_TOKEN_KEY) || null; } catch(e) { return null; }
-  }
-
-  function getManusEmail() {
-    var token = getManusToken();
-    if (!token) return null;
-    try {
-      var p = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-      return p.email || p.sub || null;
-    } catch(e) { return null; }
-  }
-
-  function getManusName() {
-    var token = getManusToken();
-    if (!token) return '';
-    try {
-      var p = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-      return ((p.firstName||p.given_name||'') + ' ' + (p.lastName||p.family_name||'')).trim() || p.email || '';
-    } catch(e) { return ''; }
-  }
-
-  /* ── Detect Manus session and show appropriate save UI ── */
+  /* ── Always show the email save UI (no session detection needed) ── */
   function initManusSession() {
-    var email = getManusEmail();
-    if (email) {
-      var name = getManusName();
-      var banner = document.getElementById('fc-manus-banner');
-      var nameEl = document.getElementById('fc-manus-name');
-      if (banner && nameEl) { nameEl.textContent = name || email; banner.style.display = 'flex'; }
-      var authSave  = document.getElementById('fc-save-auth');
-      var emailSave = document.getElementById('fc-save-email');
-      if (authSave)  authSave.style.display  = '';
-      if (emailSave) emailSave.style.display = 'none';
-    } else {
-      var emailSave = document.getElementById('fc-save-email');
-      if (emailSave) emailSave.style.display = '';
-    }
+    var emailSave = document.getElementById('fc-save-email');
+    if (emailSave) emailSave.style.display = '';
   }
 
   // ── Data (din FINANCE_INFO) ──
@@ -315,46 +281,38 @@
     document.getElementById('efy-repay-based').textContent = 'Based on ' + fmt(data.expectedSalary) + '/year salary';
   }
 
-  /* ── Sync to Manus ── */
+  /* ── Sync to EduForYou API directly ── */
   function syncFinanceToManus(email) {
     var data = getCalcData();
-    data.email = email;
-    data.source = 'shopify_finance_calculator';
-    data.submittedAt = new Date().toISOString();
 
-    var headers = { 'Content-Type': 'application/json' };
-    var token = getManusToken();
-    if (token) headers['X-Manus-Token'] = token;
+    var livingMap = { outsideLondon: 'outside_london', london: 'london', withParents: 'with_parents' };
 
-    return fetch(INTEGRATION_SERVER_URL + '/quiz/finance', {
+    var payload = {
+      quizType: 'finance',
+      email: email,
+      tuitionFee: String(data.tuitionPerYear || 9535),
+      maintenanceLoan: String(data.maintenancePerYear || 10227),
+      totalEstimate: String(data.totalCourse || 0),
+      livingLocation: livingMap[data.livingLocation] || data.livingLocation,
+      householdIncome: '0',
+      inputs: {
+        courseDuration: data.courseDuration,
+        expectedSalary: data.expectedSalary,
+        livingLocation: data.livingLocation,
+        monthlyRepayment: data.monthlyRepayment
+      }
+    };
+
+    return fetch(MANUS_API_URL + '/api/shopify/quiz-sync', {
       method: 'POST',
-      headers: headers,
-      body: JSON.stringify(data)
+      headers: { 'Content-Type': 'application/json', 'x-integration-secret': INTEGRATION_SECRET },
+      body: JSON.stringify(payload)
     })
     .then(function(r) { return r.json(); });
   }
 
   // ── Public API ──
   window.FC = {
-    saveCalculation: function() {
-      var email = getManusEmail();
-      if (!email) return;
-
-      var statusEl = document.getElementById('fc-save-status');
-      statusEl.textContent = 'Saving...';
-      statusEl.style.color = '#666';
-
-      syncFinanceToManus(email)
-        .then(function(result) {
-          statusEl.textContent = '✓ Saved to your dashboard';
-          statusEl.style.color = '#10b981';
-        })
-        .catch(function(err) {
-          statusEl.textContent = 'Failed to save. Please try again.';
-          statusEl.style.color = '#ef4444';
-        });
-    },
-
     saveWithEmail: function() {
       var email = document.getElementById('fc-email').value.trim();
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
