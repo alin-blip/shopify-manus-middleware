@@ -31,6 +31,7 @@ router.get('/config', (req, res) => {
     manusApiUrl: config.manus.apiUrl,
     integrationSecretConfigured: !!config.manus.integrationSecret,
     nodeEnv: config.nodeEnv,
+    allowedOrigins: config.allowedOrigins,
   });
 });
 

@@ -33,10 +33,21 @@ app.use(helmet({
 }));
 
 // ── CORS ──
+// Always allow shop.eduforyou.co.uk and related origins regardless of env vars
+const ALWAYS_ALLOWED = [
+  'https://shop.eduforyou.co.uk',
+  'https://www.eduforyou.co.uk',
+  'https://eduforyou.co.uk',
+  'https://ykiysp-be.myshopify.com',
+];
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (webhooks, server-to-server)
     if (!origin) return callback(null, true);
+    // Always allow core EduForYou origins
+    if (ALWAYS_ALLOWED.includes(origin)) {
+      return callback(null, true);
+    }
     if (config.allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
@@ -44,6 +55,7 @@ app.use(cors({
     if (config.nodeEnv === 'development') {
       return callback(null, true);
     }
+    logger.warn('CORS blocked origin', { origin });
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -118,6 +130,11 @@ app.use((req, res) => {
 
 // ── Error Handler ──
 app.use((err, req, res, next) => {
+  // Handle CORS errors specifically
+  if (err.message === 'Not allowed by CORS') {
+    logger.warn('CORS rejected', { origin: req.headers.origin, path: req.path });
+    return res.status(403).json({ error: 'CORS: origin not allowed', origin: req.headers.origin });
+  }
   logger.error('Unhandled error', { error: err.message, stack: err.stack, path: req.path });
   res.status(500).json({ error: 'Internal server error' });
 });
