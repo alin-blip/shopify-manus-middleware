@@ -122,19 +122,34 @@ async function syncOrderToStudent(orderData) {
  * Sync quiz results to the student's Manus profile.
  * Calls POST /api/shopify/quiz-sync
  *
- * @param {object} quizData - { quizType, email, answers, results, ... }
+ * IMPORTANT: The backend accepts both `quizType` and `type` field names.
+ * We send BOTH for maximum compatibility, plus all top-level fields
+ * that the backend can use directly (not just nested in `results`).
+ *
+ * @param {object} quizData - { type, email, firstName, lastName, phone, results, ... }
  * @returns {{ success: boolean, studentId?: number, error?: string }}
  */
 async function syncQuizResults(quizData) {
   const url = `${MANUS_API_URL}/api/shopify/quiz-sync`;
 
   try {
-    logger.info(`Syncing quiz to Manus: ${quizData.quizType}`, { email: quizData.email });
+    const quizType = quizData.quizType || quizData.type;
+    logger.info(`Syncing quiz to Manus: ${quizType}`, { email: quizData.email });
+
+    // Build the payload — include both `quizType` and `type` for compatibility,
+    // and flatten key fields to top level so the backend can access them directly
+    const payload = {
+      ...quizData,
+      quizType: quizType,        // Backend primary field name
+      type: quizType,            // Keep for backwards compat
+      // Construct full name from firstName + lastName if not already provided
+      name: quizData.name || [quizData.firstName, quizData.lastName].filter(Boolean).join(' ') || undefined,
+    };
 
     const response = await fetch(url, {
       method: 'POST',
       headers: buildHeaders(),
-      body: JSON.stringify(quizData),
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
@@ -146,7 +161,7 @@ async function syncQuizResults(quizData) {
 
     logger.info(`Quiz synced to Manus successfully`, {
       email: quizData.email,
-      quizType: quizData.quizType,
+      quizType: quizType,
       studentId: data.studentId,
     });
 

@@ -26,7 +26,7 @@ const config = {
     tokenExpiry: '24h',
   },
 
-  allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://www.eduforyou.co.uk,https://ykiysp-be.myshopify.com')
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://www.eduforyou.co.uk,https://shop.eduforyou.co.uk,https://ykiysp-be.myshopify.com')
     .split(',')
     .map(s => s.trim()),
 
