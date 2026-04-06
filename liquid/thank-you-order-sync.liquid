@@ -1,0 +1,97 @@
+{% comment %}
+  EduForYou Order Sync — Thank-You Page Script
+  =============================================
+  Add this code to: Shopify Admin → Settings → Checkout → Additional scripts
+  (or to the thank-you.liquid template if using a custom theme)
+
+  This script fires when a student lands on the order confirmation page
+  and syncs the order to their EduForYou dashboard via the middleware.
+
+  It also reads the manus_token from localStorage to link the order
+  to the student's account if they were logged in during checkout.
+{% endcomment %}
+
+<script>
+(function() {
+  'use strict';
+
+  // Only run on the order status / thank-you page
+  if (!window.Shopify || !window.Shopify.checkout) return;
+
+  var checkout = window.Shopify.checkout;
+  var order = window.Shopify.order;
+
+  // Get the student's manus token (set when they log in to eduforyou.co.uk)
+  var manusToken = localStorage.getItem('edu_session_token') ||
+                   localStorage.getItem('manus_token') ||
+                   sessionStorage.getItem('edu_session_token');
+
+  // Build products array from line items
+  var products = [];
+  var lineItems = checkout.line_items || (order && order.line_items) || [];
+  lineItems.forEach(function(item) {
+    products.push({
+      title: item.title || item.product_title,
+      sku: item.sku || '',
+      price: item.price ? (item.price / 100).toFixed(2) : '0.00',
+      quantity: item.quantity || 1,
+      variantTitle: item.variant_title || null,
+    });
+  });
+
+  var payload = {
+    email: checkout.email || (order && order.email) || '',
+    orderId: String(checkout.order_id || (order && order.id) || ''),
+    orderNumber: String(checkout.order_number || (order && order.order_number) || ''),
+    products: products,
+    totalPrice: checkout.total_price
+      ? (checkout.total_price / 100).toFixed(2)
+      : (checkout.total_price_usd || '0.00'),
+    currency: checkout.currency || 'GBP',
+    financialStatus: 'paid',
+    customerName: [
+      checkout.shipping_address && checkout.shipping_address.first_name,
+      checkout.shipping_address && checkout.shipping_address.last_name,
+    ].filter(Boolean).join(' ') || checkout.email || '',
+    source: 'shopify_thankyou',
+  };
+
+  if (!payload.email) {
+    console.log('[EduForYou] No email found on checkout — skipping order sync');
+    return;
+  }
+
+  // Prevent duplicate syncs (e.g. if the page is refreshed)
+  var syncKey = 'edu_order_synced_' + payload.orderId;
+  if (localStorage.getItem(syncKey)) {
+    console.log('[EduForYou] Order already synced:', payload.orderNumber);
+    return;
+  }
+
+  var MIDDLEWARE_URL = 'https://shopify-manus-middleware-production.up.railway.app';
+
+  var headers = { 'Content-Type': 'application/json' };
+  if (manusToken) {
+    headers['X-Manus-Token'] = manusToken;
+  }
+
+  fetch(MIDDLEWARE_URL + '/quiz/order', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(payload),
+  })
+  .then(function(response) { return response.json(); })
+  .then(function(data) {
+    if (data.success) {
+      console.log('[EduForYou] Order synced to dashboard:', payload.orderNumber);
+      localStorage.setItem(syncKey, '1');
+    } else {
+      console.warn('[EduForYou] Order sync warning:', data);
+    }
+  })
+  .catch(function(err) {
+    console.warn('[EduForYou] Order sync error (non-blocking):', err.message);
+  });
+
+})();
+</script>

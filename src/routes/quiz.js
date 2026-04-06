@@ -201,4 +201,54 @@ router.post('/finance', async (req, res) => {
   }
 });
 
+/**
+ * POST /quiz/order
+ *
+ * Receives order data from the Shopify thank-you page (order status page).
+ * This is a client-side sync that fires when the student lands on the
+ * order confirmation page after checkout. It does NOT require HMAC
+ * verification because it comes from the browser, not from Shopify servers.
+ *
+ * The Shopify thank-you page Liquid template should call this endpoint
+ * with the order details so they appear in the student's dashboard.
+ */
+router.post('/order', async (req, res) => {
+  try {
+    const {
+      email, orderId, orderNumber, products,
+      totalPrice, currency, financialStatus,
+      fulfillmentStatus, customerName, source,
+    } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    logger.info('Order sync from Shopify thank-you page', { email, orderNumber, totalPrice });
+
+    const result = await manusApi.syncOrderToStudent({
+      email: email.toLowerCase(),
+      orderId: String(orderId || ''),
+      orderNumber: String(orderNumber || ''),
+      products: products || [],
+      totalPrice: String(totalPrice || '0'),
+      currency: currency || 'GBP',
+      financialStatus: financialStatus || 'paid',
+      fulfillmentStatus: fulfillmentStatus || null,
+      customerName: customerName || null,
+      source: source || 'shopify_thankyou',
+    });
+
+    res.json({
+      success: true,
+      message: 'Order synced to student profile',
+      studentLinked: result.studentFound || false,
+    });
+
+  } catch (err) {
+    logger.error('Error processing order sync from thank-you page', { error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
