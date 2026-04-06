@@ -23,6 +23,7 @@ const quizRoutes = require('./routes/quiz');
 const authRoutes = require('./routes/auth');
 const manusRoutes = require('./routes/manusIntegration');
 const healthRoutes = require('./routes/health');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 
@@ -107,6 +108,7 @@ app.use('/quiz', quizRoutes);
 app.use('/auth', authRoutes);
 app.use('/manus', manusRoutes);
 app.use('/health', healthRoutes);
+app.use('/admin', adminRoutes);
 
 // ── Root ──
 app.get('/', (req, res) => {
