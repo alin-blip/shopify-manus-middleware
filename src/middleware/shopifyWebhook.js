@@ -1,7 +1,8 @@
 /**
  * Middleware — Shopify webhook HMAC verification.
  *
- * Shopify signs every webhook payload with HMAC-SHA256 using the app secret.
+ * Shopify signs every webhook payload with HMAC-SHA256 using the APP SECRET
+ * (SHOPIFY_CLIENT_SECRET), NOT a separate webhook secret.
  * This middleware captures the raw body, verifies the signature, and rejects
  * any request that fails verification.
  */
@@ -30,8 +31,23 @@ function shopifyWebhookVerifier(req, res, next) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
 
+  logger.info(`Verifying webhook HMAC for topic: ${topic}`, {
+    shopDomain,
+    hmacLength: hmac.length,
+    rawBodyLength: rawBody.length,
+    clientSecretSet: !!process.env.SHOPIFY_CLIENT_SECRET,
+    webhookSecretSet: !!process.env.SHOPIFY_WEBHOOK_SECRET,
+  });
+
   if (!verifyShopifyHmac(rawBody, hmac)) {
-    logger.warn('Webhook HMAC verification failed', { topic, shopDomain });
+    logger.warn('Webhook HMAC verification failed — check SHOPIFY_CLIENT_SECRET in Railway env vars', {
+      topic,
+      shopDomain,
+      hmacHeader: hmac.substring(0, 10) + '...',
+      clientSecretPrefix: process.env.SHOPIFY_CLIENT_SECRET
+        ? process.env.SHOPIFY_CLIENT_SECRET.substring(0, 8) + '...'
+        : 'NOT SET',
+    });
     return res.status(401).json({ error: 'Invalid HMAC signature' });
   }
 

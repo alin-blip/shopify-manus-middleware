@@ -7,20 +7,50 @@ const config = require('../config');
 
 /**
  * Verify Shopify webhook HMAC signature.
- * Shopify sends the HMAC in the X-Shopify-Hmac-Sha256 header.
+ * Shopify sends the HMAC in the X-Shopify-Hmac-Sha256 header (base64 encoded).
+ * Shopify signs webhooks using the APP SECRET (SHOPIFY_CLIENT_SECRET), NOT a separate webhook secret.
+ *
+ * We try multiple secrets in priority order to handle misconfiguration gracefully.
  */
 function verifyShopifyHmac(rawBody, hmacHeader) {
   if (!hmacHeader || !rawBody) return false;
 
-  const generatedHmac = crypto
-    .createHmac('sha256', config.shopify.webhookSecret)
-    .update(rawBody, 'utf8')
-    .digest('base64');
+  // Build list of candidate secrets to try, in priority order:
+  // 1. SHOPIFY_CLIENT_SECRET — the app secret, which is what Shopify actually uses
+  // 2. SHOPIFY_WEBHOOK_SECRET — may be set separately (sometimes same as client secret)
+  // 3. config values as fallback
+  const secrets = [
+    process.env.SHOPIFY_CLIENT_SECRET,
+    process.env.SHOPIFY_WEBHOOK_SECRET,
+    config.shopify.clientSecret,
+    config.shopify.webhookSecret,
+  ].filter(Boolean);
 
-  return crypto.timingSafeEqual(
-    Buffer.from(generatedHmac),
-    Buffer.from(hmacHeader)
-  );
+  // Deduplicate
+  const uniqueSecrets = [...new Set(secrets)];
+
+  for (const secret of uniqueSecrets) {
+    try {
+      const generatedHmac = crypto
+        .createHmac('sha256', secret)
+        .update(rawBody, 'utf8')
+        .digest('base64');
+
+      const generatedBuf = Buffer.from(generatedHmac);
+      const headerBuf = Buffer.from(hmacHeader);
+
+      // timingSafeEqual requires same length — if lengths differ, this secret is wrong
+      if (generatedBuf.length !== headerBuf.length) continue;
+
+      if (crypto.timingSafeEqual(generatedBuf, headerBuf)) {
+        return true;
+      }
+    } catch (e) {
+      // Skip invalid secrets (e.g., empty string, wrong format)
+    }
+  }
+
+  return false;
 }
 
 /**
