@@ -2,26 +2,91 @@
  * Webhook Routes — handles incoming Shopify webhook events.
  *
  * Supported events:
- *   - orders/create  → Sync new order to Manus student profile
- *   - orders/updated → Update order status in Manus
- *   - customers/create → Ensure customer exists in Manus
- *   - customers/update → Sync customer data changes
+ *   - orders/create  → Only syncs if financial_status === 'paid'; ignores pending orders
+ *   - orders/paid    → Primary trigger: syncs complete paid order to Manus student profile
+ *   - orders/updated → Updates order status in Manus
+ *   - customers/create → Ensures customer exists in Manus
+ *   - customers/update → Syncs customer data changes
  */
 const express = require('express');
 const router = express.Router();
 const shopifyWebhookVerifier = require('../middleware/shopifyWebhook');
 const manusApi = require('../services/manusApi');
-const shopifyApi = require('../services/shopifyApi');
 const logger = require('../utils/logger');
 
 // All webhook routes use HMAC verification
 router.use(shopifyWebhookVerifier);
 
 /**
+ * Shared helper: extract and sync a paid order to Manus.
+ * Used by both orders/create (when paid) and orders/paid.
+ */
+async function syncPaidOrder(order, source) {
+  const customerEmail = order.email || order.customer?.email;
+  if (!customerEmail) {
+    logger.warn(`[${source}] Order received without customer email`, { orderId: order.id });
+    return;
+  }
+
+  logger.info(`[${source}] Syncing paid order #${order.order_number}`, {
+    email: customerEmail,
+    total: order.total_price,
+    currency: order.currency,
+    financialStatus: order.financial_status,
+  });
+
+  const orderPayload = {
+    source: 'shopify',
+    shopifyOrderId: String(order.id),
+    orderNumber: order.order_number,
+    email: customerEmail.toLowerCase(),
+    customerName: `${order.customer?.first_name || ''} ${order.customer?.last_name || ''}`.trim(),
+    products: (order.line_items || []).map(item => ({
+      title: item.title,
+      variant: item.variant_title,
+      sku: item.sku,
+      quantity: item.quantity,
+      price: item.price,
+      productId: String(item.product_id),
+    })),
+    totalPrice: order.total_price,
+    subtotalPrice: order.subtotal_price,
+    currency: order.currency,
+    financialStatus: order.financial_status || 'paid',
+    fulfillmentStatus: order.fulfillment_status,
+    orderDate: order.created_at,
+    tags: order.tags,
+    note: order.note,
+    discountCodes: (order.discount_codes || []).map(d => d.code),
+  };
+
+  const result = await manusApi.syncOrderToStudent(orderPayload);
+
+  if (result.success) {
+    logger.info(`[${source}] Order #${order.order_number} synced to Manus`, { email: customerEmail });
+  } else {
+    logger.error(`[${source}] Failed to sync order #${order.order_number} to Manus`, {
+      email: customerEmail,
+      error: result.error,
+    });
+  }
+
+  // Ensure the student record exists / is updated
+  await manusApi.upsertStudent({
+    email: customerEmail.toLowerCase(),
+    firstName: order.customer?.first_name,
+    lastName: order.customer?.last_name,
+    phone: order.customer?.phone,
+    source: 'shopify_order',
+  });
+}
+
+/**
  * POST /webhooks/orders/create
  *
  * Triggered when a new order is placed on Shopify.
- * Extracts order data and syncs it to the student's Manus dashboard.
+ * IMPORTANT: Only syncs if financial_status === 'paid'.
+ * Pending/unpaid orders are ignored to avoid empty records in the dashboard.
  */
 router.post('/orders/create', async (req, res) => {
   // Respond immediately to Shopify (they expect 200 within 5s)
@@ -29,65 +94,15 @@ router.post('/orders/create', async (req, res) => {
 
   try {
     const order = req.body;
-    const customerEmail = order.email || order.customer?.email;
+    const financialStatus = order.financial_status;
 
-    if (!customerEmail) {
-      logger.warn('Order received without customer email', { orderId: order.id });
+    // Skip unpaid orders — orders/paid webhook will handle them when payment completes
+    if (financialStatus !== 'paid') {
+      logger.info(`[orders/create] Skipping order #${order.order_number} — status: ${financialStatus} (not paid)`);
       return;
     }
 
-    logger.info(`Processing new order #${order.order_number}`, {
-      email: customerEmail,
-      total: order.total_price,
-      currency: order.currency,
-    });
-
-    // Extract order data for Manus
-    const orderPayload = {
-      source: 'shopify',
-      shopifyOrderId: String(order.id),
-      orderNumber: order.order_number,
-      email: customerEmail.toLowerCase(),
-      customerName: `${order.customer?.first_name || ''} ${order.customer?.last_name || ''}`.trim(),
-      products: (order.line_items || []).map(item => ({
-        title: item.title,
-        variant: item.variant_title,
-        sku: item.sku,
-        quantity: item.quantity,
-        price: item.price,
-        productId: String(item.product_id),
-      })),
-      totalPrice: order.total_price,
-      subtotalPrice: order.subtotal_price,
-      currency: order.currency,
-      financialStatus: order.financial_status,
-      fulfillmentStatus: order.fulfillment_status,
-      orderDate: order.created_at,
-      tags: order.tags,
-      note: order.note,
-      discountCodes: (order.discount_codes || []).map(d => d.code),
-    };
-
-    // Sync to Manus
-    const result = await manusApi.syncOrderToStudent(orderPayload);
-
-    if (result.success) {
-      logger.info(`Order #${order.order_number} synced to Manus`, { email: customerEmail });
-    } else {
-      logger.error(`Failed to sync order #${order.order_number} to Manus`, {
-        email: customerEmail,
-        error: result.error,
-      });
-    }
-
-    // Also ensure the student record exists / is updated
-    await manusApi.upsertStudent({
-      email: customerEmail.toLowerCase(),
-      firstName: order.customer?.first_name,
-      lastName: order.customer?.last_name,
-      phone: order.customer?.phone,
-      source: 'shopify_order',
-    });
+    await syncPaidOrder(order, 'orders/create');
 
   } catch (err) {
     logger.error('Error processing orders/create webhook', { error: err.message, stack: err.stack });
@@ -95,9 +110,29 @@ router.post('/orders/create', async (req, res) => {
 });
 
 /**
+ * POST /webhooks/orders/paid
+ *
+ * Triggered when payment is confirmed for an order.
+ * This is the PRIMARY event for syncing complete order data to Manus.
+ * At this point, line_items and all order details are guaranteed to be complete.
+ */
+router.post('/orders/paid', async (req, res) => {
+  // Respond immediately to Shopify (they expect 200 within 5s)
+  res.status(200).json({ received: true });
+
+  try {
+    const order = req.body;
+    await syncPaidOrder(order, 'orders/paid');
+  } catch (err) {
+    logger.error('Error processing orders/paid webhook', { error: err.message, stack: err.stack });
+  }
+});
+
+/**
  * POST /webhooks/orders/updated
  *
  * Triggered when an order is updated (payment confirmed, fulfilled, etc.).
+ * Also handles the case where financial_status transitions to 'paid'.
  */
 router.post('/orders/updated', async (req, res) => {
   res.status(200).json({ received: true });
@@ -114,6 +149,14 @@ router.post('/orders/updated', async (req, res) => {
       fulfillmentStatus: order.fulfillment_status,
     });
 
+    // If the order just became paid and has line_items, do a full sync
+    if (order.financial_status === 'paid' && order.line_items && order.line_items.length > 0) {
+      logger.info(`[orders/updated] Order #${order.order_number} is now paid — doing full sync`);
+      await syncPaidOrder(order, 'orders/updated');
+      return;
+    }
+
+    // Otherwise just update the status fields
     const updatePayload = {
       source: 'shopify',
       shopifyOrderId: String(order.id),
