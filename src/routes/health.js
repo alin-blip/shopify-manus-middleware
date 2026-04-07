@@ -14,7 +14,7 @@ router.get('/', (req, res) => {
     status: 'ok',
     service: 'shopify-manus-integration',
     timestamp: new Date().toISOString(),
-    version: '1.1.0',
+    version: '1.2.0',
     manusApiUrl: config.manus.apiUrl,
     shopifyStore: config.shopify.storeDomain,
   });
