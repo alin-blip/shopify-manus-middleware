@@ -90,20 +90,27 @@ router.post('/eligibility', async (req, res) => {
  * POST /quiz/ikigai
  *
  * Receives Ikigai quiz results from the Shopify Liquid page.
+ * Supports both flat payload (all fields at top level) and nested
+ * results object (when Liquid template sends { results: { topDomain, ... } }).
  */
 router.post('/ikigai', async (req, res) => {
   try {
     const {
       name, email, phone,
-      answers, topDomain, tagCounts,
-      recommendedCourses, source,
+      answers, source,
     } = req.body;
+
+    // Support both flat payload and nested results object (from different Liquid templates)
+    const resultsObj = req.body.results || {};
+    const topDomain = req.body.topDomain || resultsObj.topDomain;
+    const tagCounts = req.body.tagCounts || resultsObj.tagCounts;
+    const recommendedCourses = req.body.recommendedCourses || resultsObj.recommendedCourses || [];
 
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    logger.info('Ikigai quiz submitted', { email, topDomain });
+    logger.info('Ikigai quiz submitted', { email, topDomain, recommendedCourses });
 
     const quizPayload = {
       type: 'ikigai',
@@ -112,10 +119,10 @@ router.post('/ikigai', async (req, res) => {
       lastName: name ? name.split(' ').slice(1).join(' ') : undefined,
       phone,
       results: {
-        answers,
+        answers: answers || resultsObj.answers,
         topDomain,
         tagCounts,
-        recommendedCourses: recommendedCourses || [],
+        recommendedCourses,
       },
       completedAt: new Date().toISOString(),
       source: source || 'shopify',
