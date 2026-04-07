@@ -2,7 +2,8 @@
  * Webhook Routes — handles incoming Shopify webhook events.
  *
  * Supported events:
- *   - orders/create  → Only syncs if financial_status === 'paid'; ignores pending orders
+ *   - orders/create  → Fetches full order details from Shopify API if line_items are empty,
+ *                      then syncs to Manus regardless of payment status.
  *   - orders/paid    → Primary trigger: syncs complete paid order to Manus student profile
  *   - orders/updated → Updates order status in Manus
  *   - customers/create → Ensures customer exists in Manus
@@ -10,16 +11,75 @@
  */
 const express = require('express');
 const router = express.Router();
+const https = require('https');
 const shopifyWebhookVerifier = require('../middleware/shopifyWebhook');
 const manusApi = require('../services/manusApi');
 const logger = require('../utils/logger');
+const config = require('../config');
 
 // All webhook routes use HMAC verification
 router.use(shopifyWebhookVerifier);
 
 /**
- * Shared helper: extract and sync a paid order to Manus.
- * Used by both orders/create (when paid) and orders/paid.
+ * Fetch full order details from Shopify REST API.
+ * Used when orders/create arrives with empty line_items.
+ */
+async function fetchOrderFromShopify(orderId) {
+  const storeDomain = config.shopify.storeDomain;
+  const apiVersion = config.shopify.apiVersion;
+  const accessToken = config.shopify.accessToken;
+
+  if (!accessToken) {
+    logger.warn('[shopify-api] SHOPIFY_ACCESS_TOKEN not set — cannot fetch order details');
+    return null;
+  }
+
+  const url = `https://${storeDomain}/admin/api/${apiVersion}/orders/${orderId}.json`;
+
+  return new Promise((resolve, reject) => {
+    const options = {
+      method: 'GET',
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+    };
+
+    const req = https.request(url, options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.order) {
+            logger.info(`[shopify-api] Fetched order #${parsed.order.order_number} from Shopify API`, {
+              lineItemCount: (parsed.order.line_items || []).length,
+              totalPrice: parsed.order.total_price,
+            });
+            resolve(parsed.order);
+          } else {
+            logger.warn('[shopify-api] No order in response', { data: data.substring(0, 200) });
+            resolve(null);
+          }
+        } catch (e) {
+          logger.error('[shopify-api] Failed to parse response', { error: e.message });
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      logger.error('[shopify-api] Request failed', { error: e.message });
+      resolve(null);
+    });
+
+    req.end();
+  });
+}
+
+/**
+ * Shared helper: extract and sync an order to Manus.
+ * Used by both orders/create and orders/paid.
  */
 async function syncPaidOrder(order, source) {
   const customerEmail = order.email || order.customer?.email;
@@ -28,11 +88,12 @@ async function syncPaidOrder(order, source) {
     return;
   }
 
-  logger.info(`[${source}] Syncing paid order #${order.order_number}`, {
+  logger.info(`[${source}] Syncing order #${order.order_number}`, {
     email: customerEmail,
     total: order.total_price,
     currency: order.currency,
     financialStatus: order.financial_status,
+    lineItemCount: (order.line_items || []).length,
   });
 
   const orderPayload = {
@@ -52,7 +113,7 @@ async function syncPaidOrder(order, source) {
     totalPrice: order.total_price,
     subtotalPrice: order.subtotal_price,
     currency: order.currency,
-    financialStatus: order.financial_status || 'paid',
+    financialStatus: order.financial_status || 'pending',
     fulfillmentStatus: order.fulfillment_status,
     orderDate: order.created_at,
     tags: order.tags,
@@ -85,21 +146,40 @@ async function syncPaidOrder(order, source) {
  * POST /webhooks/orders/create
  *
  * Triggered when a new order is placed on Shopify.
- * IMPORTANT: Only syncs if financial_status === 'paid'.
- * Pending/unpaid orders are ignored to avoid empty records in the dashboard.
+ * If line_items are empty (common for pending orders), fetches full order
+ * details from Shopify REST API before syncing.
+ * Syncs all orders regardless of payment status.
  */
 router.post('/orders/create', async (req, res) => {
   // Respond immediately to Shopify (they expect 200 within 5s)
   res.status(200).json({ received: true });
 
   try {
-    const order = req.body;
-    const financialStatus = order.financial_status;
+    let order = req.body;
+    const lineItems = order.line_items || [];
+    const hasProducts = lineItems.length > 0 && lineItems[0].title;
+    const totalPrice = parseFloat(order.total_price || '0');
 
-    // Skip unpaid orders — orders/paid webhook will handle them when payment completes
-    if (financialStatus !== 'paid') {
-      logger.info(`[orders/create] Skipping order #${order.order_number} — status: ${financialStatus} (not paid)`);
-      return;
+    // If line_items are empty or total_price is 0, fetch full order from Shopify API
+    if (!hasProducts || totalPrice === 0) {
+      logger.info(`[orders/create] Order #${order.order_number} has incomplete data — fetching from Shopify API`, {
+        lineItemCount: lineItems.length,
+        totalPrice: order.total_price,
+        financialStatus: order.financial_status,
+      });
+
+      const fullOrder = await fetchOrderFromShopify(order.id);
+      if (fullOrder) {
+        order = fullOrder;
+        logger.info(`[orders/create] Got full order from Shopify API`, {
+          lineItemCount: (order.line_items || []).length,
+          totalPrice: order.total_price,
+        });
+      } else {
+        logger.warn(`[orders/create] Could not fetch full order — syncing with available data`, {
+          orderId: order.id,
+        });
+      }
     }
 
     await syncPaidOrder(order, 'orders/create');
@@ -113,7 +193,7 @@ router.post('/orders/create', async (req, res) => {
  * POST /webhooks/orders/paid
  *
  * Triggered when payment is confirmed for an order.
- * This is the PRIMARY event for syncing complete order data to Manus.
+ * This is the PRIMARY event for syncing complete paid order data to Manus.
  * At this point, line_items and all order details are guaranteed to be complete.
  */
 router.post('/orders/paid', async (req, res) => {

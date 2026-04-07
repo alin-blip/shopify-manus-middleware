@@ -13,6 +13,7 @@ const config = {
     storeDomain: process.env.SHOPIFY_STORE_DOMAIN || 'ykiysp-be.myshopify.com',
     apiVersion: process.env.SHOPIFY_API_VERSION || '2024-01',
     webhookSecret: process.env.SHOPIFY_WEBHOOK_SECRET || process.env.SHOPIFY_CLIENT_SECRET,
+    accessToken: process.env.SHOPIFY_ACCESS_TOKEN || '',
   },
 
   manus: {
