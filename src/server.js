@@ -92,6 +92,44 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Dynamic JS Endpoints ──
+// Serves finance-calc-fix v2 inline (polling-based patch for Finance Calculator)
+app.get('/js/finance-fix.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const code = `(function(){
+  var A='https://www.eduforyou.co.uk',B='shopify_manus_secret_2026_eduforyou';
+  function mL(l){return({outsideLondon:'outside_london',london:'london',withParents:'with_parents'})[l]||l;}
+  function sync(email){
+    var lv=(document.getElementById('efy-living')||{}).value||'outsideLondon';
+    var dur=parseInt((document.getElementById('efy-duration')||{}).value||'3');
+    var sal=parseInt((document.getElementById('efy-salary')||{}).value||'30000');
+    var T=9535,M={london:13022,outsideLondon:10227,withParents:8610},m=M[lv]||10227;
+    var tc=(T+m)*dur,mo=sal<=25000?0:Math.round(((sal-25000)*0.09)/12);
+    return fetch(A+'/api/shopify/quiz-sync',{method:'POST',
+      headers:{'Content-Type':'application/json','x-integration-secret':B},
+      body:JSON.stringify({quizType:'finance',email:email,tuitionFee:String(T),maintenanceLoan:String(m),totalEstimate:String(tc),livingLocation:mL(lv),householdIncome:'0',inputs:{courseDuration:dur,expectedSalary:sal,livingLocation:lv,monthlyRepayment:mo}})
+    }).then(function(r){return r.json();});
+  }
+  function patch(){
+    var es=document.getElementById('fc-save-email'),as=document.getElementById('fc-save-auth');
+    if(es)es.style.display='';if(as)as.style.display='none';
+    if(!window.FC)return false;
+    window.FC.saveWithEmail=function(){
+      var e=((document.getElementById('fc-email')||{}).value||'').trim();
+      if(!e||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(e)){var s=document.getElementById('fc-save-email-status');if(s){s.textContent='Please enter a valid email';s.style.color='#ef4444';}return;}
+      var st=document.getElementById('fc-save-email-status');
+      if(st){st.textContent='Saving...';st.style.color='#666';}
+      sync(e).then(function(r){if(st){st.textContent=r.success?'\u2713 Saved! Check your dashboard at eduforyou.co.uk':'Failed to save. Please try again.';st.style.color=r.success?'#10b981':'#ef4444';}}).catch(function(){if(st){st.textContent='Failed to save. Please try again.';st.style.color='#ef4444';}});
+    };
+    return true;
+  }
+  var a=0,iv=setInterval(function(){a++;if(patch()||a>=50)clearInterval(iv);},100);
+})();`;
+  res.send(code);
+});
+
 // ── Static Files ──
 // Serves /public directory at /static — used for checkout-redirect.js
 app.use('/static', express.static(path.join(__dirname, '..', 'public'), {
